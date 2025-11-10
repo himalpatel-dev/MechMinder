@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import '../service/database_helper.dart';
 import 'dart:io'; // Required to display File objects
 import 'package:image_picker/image_picker.dart';
+import 'package:provider/provider.dart';
+import '../service/settings_provider.dart';
 
 class AddVehicleScreen extends StatefulWidget {
   final int? vehicleId;
@@ -160,217 +162,248 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       body:
           _isLoading // --- ADD LOADING CHECK ---
           ? const Center(child: CircularProgressIndicator())
-          : Padding(
-              padding: const EdgeInsets.all(16.0),
-              child: Form(
-                key: _formKey, // Assign key to the form
-                child: ListView(
-                  children: [
-                    // --- Make ---
-                    TextFormField(
-                      controller: _makeController,
-                      decoration: const InputDecoration(
-                        labelText: 'Make (e.g., Honda)',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter a make';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
+          : Consumer<SettingsProvider>(
+              builder: (context, settings, child) {
+                return Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Form(
+                    key: _formKey, // Assign key to the form
+                    child: ListView(
+                      children: [
+                        // --- Make ---
+                        TextFormField(
+                          controller: _makeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Make (e.g., Honda)',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter a make';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
 
-                    // --- Model ---
-                    TextFormField(
-                      controller: _modelController,
-                      decoration: const InputDecoration(
-                        labelText: 'Model (e.g., CB Shine)',
-                      ),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter a model';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 10),
+                        // --- Model ---
+                        TextFormField(
+                          controller: _modelController,
+                          decoration: const InputDecoration(
+                            labelText: 'Model (e.g., CB Shine)',
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter a model';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 10),
 
-                    // --- Year ---
-                    TextFormField(
-                      controller: _yearController,
-                      decoration: const InputDecoration(
-                        labelText: 'Year (e.g., 2023)',
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    ),
-                    const SizedBox(height: 10),
+                        // --- Year ---
+                        TextFormField(
+                          controller: _yearController,
+                          decoration: const InputDecoration(
+                            labelText: 'Year (e.g., 2023)',
+                          ),
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                        ),
+                        const SizedBox(height: 10),
 
-                    // --- Registration No ---
-                    TextFormField(
-                      controller: _regNoController,
-                      decoration: const InputDecoration(
-                        labelText: 'Registration No (e.g., GJ 05 AB 1234)',
-                      ),
-                    ),
-                    const SizedBox(height: 10),
+                        // --- Registration No ---
+                        TextFormField(
+                          controller: _regNoController,
+                          decoration: const InputDecoration(
+                            labelText: 'Registration No (e.g., GJ 05 AB 1234)',
+                          ),
+                        ),
+                        const SizedBox(height: 10),
 
-                    // --- Initial Odometer ---
-                    TextFormField(
-                      controller: _odometerController,
-                      decoration: const InputDecoration(
-                        labelText: 'Initial Odometer (e.g., 1200)',
-                      ),
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    ),
-                    const SizedBox(height: 20),
+                        // --- Initial Odometer ---
+                        // --- Initial Odometer ---
+                        TextFormField(
+                          controller: _odometerController,
+                          decoration: InputDecoration(
+                            labelText: _isEditMode
+                                ? 'Current Odometer'
+                                : 'Initial Odometer',
+                            suffixText: settings.unitType,
 
-                    // --- ADD THIS NEW PHOTO SECTION ---
-                    const Text(
-                      'Add Photos',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    SizedBox(
-                      height: 100,
-                      child: ListView.builder(
-                        scrollDirection: Axis.horizontal,
-                        // The new count is OLD photos + NEW photos + 1 (for add button)
-                        itemCount:
-                            _existingPhotos.length + _newImageFiles.length + 1,
-                        itemBuilder: (context, index) {
-                          // --- BUILD THE "ADD" BUTTON ---
-                          if (index ==
-                              _existingPhotos.length + _newImageFiles.length) {
-                            return GestureDetector(
-                              onTap: _pickImage,
-                              child: Container(
-                                width: 100,
-                                decoration: BoxDecoration(
-                                  border: Border.all(color: Colors.grey),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.add_a_photo,
-                                  size: 40,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            );
-                          }
+                            // --- THIS IS THE FIX ---
+                            // We will manually fill the box with a gray color
+                            // when in edit mode to make it look disabled.
+                            filled:
+                                _isEditMode, // Tell it to fill the background
+                            fillColor: _isEditMode
+                                ? Colors.grey[200]
+                                : null, // Set the color
+                            // --- END OF FIX ---
+                          ),
+                          enabled:
+                              !_isEditMode, // This stops the user from tapping it
+                          keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                        ),
+                        const SizedBox(height: 20),
 
-                          // --- BUILD AN "EXISTING PHOTO" TILE ---
-                          if (index < _existingPhotos.length) {
-                            final photo = _existingPhotos[index];
-                            final photoPath = photo[DatabaseHelper.columnUri];
-                            return Stack(
-                              children: [
-                                Container(
-                                  width: 100,
-                                  height: 100,
-                                  margin: const EdgeInsets.only(right: 8),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: DecorationImage(
-                                      image: FileImage(File(photoPath)),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                // --- DELETE BUTTON for EXISTING photo ---
-                                Positioned(
-                                  top: 0,
-                                  right: 8,
-                                  child: GestureDetector(
-                                    onTap: () async {
-                                      // 1. Delete from database
-                                      await dbHelper.deletePhoto(
-                                        photo[DatabaseHelper.columnId],
-                                      );
-                                      // 2. Remove from list and update UI
-                                      setState(() {
-                                        _existingPhotos.removeAt(index);
-                                      });
-                                    },
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black54,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.delete,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          }
-
-                          // --- BUILD A "NEW PHOTO" TILE ---
-                          final newPhotoIndex = index - _existingPhotos.length;
-                          final photoFile = _newImageFiles[newPhotoIndex];
-                          return Stack(
-                            children: [
-                              Container(
-                                width: 100,
-                                height: 100,
-                                margin: const EdgeInsets.only(right: 8),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  image: DecorationImage(
-                                    image: FileImage(File(photoFile.path)),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                              // --- DELETE BUTTON for NEW photo ---
-                              Positioned(
-                                top: 0,
-                                right: 8,
-                                child: GestureDetector(
-                                  onTap: () {
-                                    // Just remove from the list
-                                    setState(() {
-                                      _newImageFiles.removeAt(newPhotoIndex);
-                                    });
-                                  },
+                        // --- ADD THIS NEW PHOTO SECTION ---
+                        const Text(
+                          'Add Photos',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            // The new count is OLD photos + NEW photos + 1 (for add button)
+                            itemCount:
+                                _existingPhotos.length +
+                                _newImageFiles.length +
+                                1,
+                            itemBuilder: (context, index) {
+                              // --- BUILD THE "ADD" BUTTON ---
+                              if (index ==
+                                  _existingPhotos.length +
+                                      _newImageFiles.length) {
+                                return GestureDetector(
+                                  onTap: _pickImage,
                                   child: Container(
-                                    decoration: const BoxDecoration(
-                                      color: Colors.black54,
-                                      shape: BoxShape.circle,
+                                    width: 100,
+                                    decoration: BoxDecoration(
+                                      border: Border.all(color: Colors.grey),
+                                      borderRadius: BorderRadius.circular(8),
                                     ),
                                     child: const Icon(
-                                      Icons.close,
-                                      color: Colors.white,
-                                      size: 20,
+                                      Icons.add_a_photo,
+                                      size: 40,
+                                      color: Colors.grey,
                                     ),
                                   ),
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    // --- END OF PHOTO SECTION ---
+                                );
+                              }
 
-                    // --- Save Button ---
-                    ElevatedButton(
-                      onPressed: _saveVehicle,
-                      child: const Text('Save Vehicle'),
+                              // --- BUILD AN "EXISTING PHOTO" TILE ---
+                              if (index < _existingPhotos.length) {
+                                final photo = _existingPhotos[index];
+                                final photoPath =
+                                    photo[DatabaseHelper.columnUri];
+                                return Stack(
+                                  children: [
+                                    Container(
+                                      width: 100,
+                                      height: 100,
+                                      margin: const EdgeInsets.only(right: 8),
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(8),
+                                        image: DecorationImage(
+                                          image: FileImage(File(photoPath)),
+                                          fit: BoxFit.cover,
+                                        ),
+                                      ),
+                                    ),
+                                    // --- DELETE BUTTON for EXISTING photo ---
+                                    Positioned(
+                                      top: 0,
+                                      right: 8,
+                                      child: GestureDetector(
+                                        onTap: () async {
+                                          // 1. Delete from database
+                                          await dbHelper.deletePhoto(
+                                            photo[DatabaseHelper.columnId],
+                                          );
+                                          // 2. Remove from list and update UI
+                                          setState(() {
+                                            _existingPhotos.removeAt(index);
+                                          });
+                                        },
+                                        child: Container(
+                                          decoration: const BoxDecoration(
+                                            color: Colors.black54,
+                                            shape: BoxShape.circle,
+                                          ),
+                                          child: const Icon(
+                                            Icons.delete,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+
+                              // --- BUILD A "NEW PHOTO" TILE ---
+                              final newPhotoIndex =
+                                  index - _existingPhotos.length;
+                              final photoFile = _newImageFiles[newPhotoIndex];
+                              return Stack(
+                                children: [
+                                  Container(
+                                    width: 100,
+                                    height: 100,
+                                    margin: const EdgeInsets.only(right: 8),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      image: DecorationImage(
+                                        image: FileImage(File(photoFile.path)),
+                                        fit: BoxFit.cover,
+                                      ),
+                                    ),
+                                  ),
+                                  // --- DELETE BUTTON for NEW photo ---
+                                  Positioned(
+                                    top: 0,
+                                    right: 8,
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        // Just remove from the list
+                                        setState(() {
+                                          _newImageFiles.removeAt(
+                                            newPhotoIndex,
+                                          );
+                                        });
+                                      },
+                                      child: Container(
+                                        decoration: const BoxDecoration(
+                                          color: Colors.black54,
+                                          shape: BoxShape.circle,
+                                        ),
+                                        child: const Icon(
+                                          Icons.close,
+                                          color: Colors.white,
+                                          size: 20,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        // --- END OF PHOTO SECTION ---
+
+                        // --- Save Button ---
+                        ElevatedButton(
+                          onPressed: _saveVehicle,
+                          child: const Text('Save Vehicle'),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-              ),
+                  ),
+                );
+              },
             ),
     );
   }

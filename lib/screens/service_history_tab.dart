@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
-import '../service/database_helper.dart';
+import 'package:provider/provider.dart';
+import '../service/database_helper.dart'; // Make sure this path is correct
+import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'add_service_screen.dart';
 import 'service_detail_screen.dart';
 
@@ -24,12 +26,17 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
   }
 
   Future<void> _refreshServiceList() async {
-    final vehicle = await dbHelper.queryVehicleById(widget.vehicleId);
-    _currentOdometer = vehicle?[DatabaseHelper.columnCurrentOdometer] ?? 0;
+    final data = await Future.wait([
+      dbHelper.queryServicesForVehicle(widget.vehicleId),
+      dbHelper.queryVehicleById(widget.vehicleId),
+    ]);
 
-    final services = await dbHelper.queryServicesForVehicle(widget.vehicleId);
+    final services = data[0] as List<Map<String, dynamic>>;
+    final vehicle = data[1] as Map<String, dynamic>?;
+
     setState(() {
       _serviceRecords = services;
+      _currentOdometer = vehicle?[DatabaseHelper.columnCurrentOdometer] ?? 0;
       _isLoading = false;
     });
   }
@@ -40,19 +47,19 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
       MaterialPageRoute(
         builder: (context) => AddServiceScreen(
           vehicleId: widget.vehicleId,
-          currentOdometer: _currentOdometer, // We pass the odometer here
+          currentOdometer: _currentOdometer,
         ),
       ),
     ).then((_) {
-      // This will run when we come back from the form
       _refreshServiceList();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = Provider.of<SettingsProvider>(context);
+
     return Scaffold(
-      // We add a Scaffold here to get the FloatingActionButton
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _serviceRecords.isEmpty
@@ -64,73 +71,131 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
               ),
             )
           : ListView.builder(
+              padding: const EdgeInsets.only(bottom: 80),
               itemCount: _serviceRecords.length,
               itemBuilder: (context, index) {
                 final record = _serviceRecords[index];
-                // We'll show a simple card for now
+
+                // --- THIS IS THE NEW, REDESIGNED CARD ---
                 return Card(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 10,
-                    vertical: 4,
+                    vertical: 5,
                   ),
-                  child: ListTile(
-                    title: Text(
-                      record[DatabaseHelper.columnNotes] ?? 'Service',
-                      style: const TextStyle(fontWeight: FontWeight.bold),
-                    ),
-                    subtitle: Text(
-                      'Date: ${record[DatabaseHelper.columnServiceDate]}\n'
-                      'Vendor: ${record['vendor_name'] ?? 'N/A'}',
-                    ),
+                  elevation: 3,
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
                     onTap: () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (context) => ServiceDetailScreen(
                             serviceId: record[DatabaseHelper.columnId],
-                            // --- ADD THESE TWO LINES ---
                             vehicleId: widget.vehicleId,
                             currentOdometer: _currentOdometer,
                           ),
                         ),
                       ).then((_) {
-                        // --- ADD THIS .then() BLOCK ---
-                        // This will refresh the service list if you
-                        // delete the service from the detail screen (in a future step)
                         _refreshServiceList();
                       });
                     },
-                    isThreeLine:
-                        false, // We're moving data to the trailing widget
-                    // --- NEW TRAILING WIDGET ---
-                    trailing: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '\$${record[DatabaseHelper.columnTotalCost] ?? '0.00'}',
-                          style: const TextStyle(
-                            color: Colors.green,
-                            fontWeight: FontWeight.bold,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 12.0,
+                      ),
+                      child: Row(
+                        children: [
+                          // 1. Leading Icon (wrench)
+                          const Icon(Icons.build, color: Colors.blue, size: 30),
+                          const SizedBox(width: 16),
+
+                          // 2. Main Details (fills the space)
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  record[DatabaseHelper.columnServiceName] ??
+                                      'Service',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 17,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                // Icon Row for Date
+                                _buildIconRow(
+                                  Icons.calendar_today,
+                                  record[DatabaseHelper.columnServiceDate],
+                                ),
+                                const SizedBox(height: 4),
+                                // Icon Row for Odometer
+                                _buildIconRow(
+                                  Icons.speed,
+                                  '${record[DatabaseHelper.columnOdometer] ?? 'N/A'} ${settings.unitType}',
+                                ),
+                                const SizedBox(height: 4),
+                                // Icon Row for Vendor
+                                _buildIconRow(
+                                  Icons.store,
+                                  record['vendor_name'] ?? 'N/A',
+                                ),
+                              ],
+                            ),
                           ),
-                        ),
-                        Text(
-                          '${record['item_count']} items', // <-- SHOWS ITEM COUNT
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey,
+
+                          // 3. Trailing Cost and Chevron
+                          Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              Text(
+                                '${settings.currencySymbol}${record[DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                                style: TextStyle(
+                                  color: Colors.green[700],
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${record['item_count']} items',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Icon(
+                                Icons.chevron_right,
+                                color: Colors.grey[400],
+                              ),
+                            ],
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 );
+                // --- END OF NEW CARD ---
               },
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: _navigateToAddService,
         child: const Icon(Icons.add),
       ),
+    );
+  }
+
+  // --- NEW HELPER WIDGET FOR ICON ROWS ---
+  Widget _buildIconRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Text(text, style: TextStyle(fontSize: 14, color: Colors.grey[800])),
+      ],
     );
   }
 }

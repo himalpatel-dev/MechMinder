@@ -74,6 +74,7 @@ class _StatsPieChartState extends State<StatsPieChart> {
                 ),
               ),
             ),
+            const SizedBox(height: 16),
             // This builds the "legend" or key for the chart
             Wrap(
               spacing: 8.0,

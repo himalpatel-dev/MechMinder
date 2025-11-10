@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../service/database_helper.dart';
 import 'dart:io';
+import '../widgets/full_screen_photo_viewer.dart';
+import '../service/notification_service.dart';
+import 'package:provider/provider.dart';
+import '../service/settings_provider.dart';
 
 class OverviewTab extends StatefulWidget {
   final int vehicleId;
@@ -14,7 +18,6 @@ class _OverviewTabState extends State<OverviewTab> {
   final dbHelper = DatabaseHelper.instance;
   final TextEditingController _odometerController = TextEditingController();
 
-  Map<String, dynamic>? _vehicle;
   Map<String, dynamic>? _nextDueDateReminder;
   Map<String, dynamic>? _nextOdometerReminder;
 
@@ -51,8 +54,6 @@ class _OverviewTabState extends State<OverviewTab> {
       }
 
       setState(() {
-        _vehicle = vehicleData;
-
         // This line is a common place for errors if the column is null
         _odometerController.text =
             (vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0).toString();
@@ -76,32 +77,59 @@ class _OverviewTabState extends State<OverviewTab> {
   }
 
   void _saveOdometer() async {
+    // --- 1. Get existing data ---
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    print("[DEBUG] UPDATE button pressed.");
-
     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
-    print(
-      "[DEBUG] Saving new odometer value: $newOdometer for vehicle ID: ${widget.vehicleId}",
-    );
 
+    // --- 2. Save the new odometer to the DB ---
     await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
-    print("[DEBUG] Database update called successfully.");
 
-    if (mounted) {
-      FocusScope.of(context).unfocus();
-    }
-
+    // --- 3. Show confirmation SnackBar ---
     scaffoldMessenger.showSnackBar(
       const SnackBar(
         content: Text('Odometer updated!'),
         backgroundColor: Colors.green,
       ),
     );
-    print("[DEBUG] Odometer update complete!");
+    if (mounted) {
+      FocusScope.of(context).unfocus();
+    }
+
+    // --- 4. NEW: CHECK ODOMETER-BASED REMINDERS ---
+    print("Checking odometer-based reminders...");
+
+    // Get all reminders for this vehicle
+    final allReminders = await dbHelper.queryRemindersForVehicle(
+      widget.vehicleId,
+    );
+
+    for (var reminder in allReminders) {
+      final dueOdometer = reminder[DatabaseHelper.columnDueOdometer];
+
+      // Check if it's an odometer reminder AND if we've passed the value
+      if (dueOdometer != null && newOdometer >= dueOdometer) {
+        final int reminderId = reminder[DatabaseHelper.columnId];
+        final String templateName = reminder['template_name'] ?? 'Service';
+
+        print(
+          "  > Odometer due for '$templateName'! Sending notification and deleting reminder.",
+        );
+
+        // 5. Send immediate notification
+        await NotificationService().showImmediateReminder(
+          id: reminderId, // Use the reminder's ID
+          title: 'Vehicle Service Due',
+          body:
+              'Your "$templateName" service is due! (Reached $dueOdometer km).',
+        );
+      }
+    }
+    // --- END OF NEW LOGIC ---
   }
 
   @override
   Widget build(BuildContext context) {
+    final settings = Provider.of<SettingsProvider>(context);
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -148,7 +176,9 @@ class _OverviewTabState extends State<OverviewTab> {
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
                           ),
-                          decoration: const InputDecoration(suffixText: 'km'),
+                          decoration: InputDecoration(
+                            suffixText: settings.unitType, // <-- THE FIX
+                          ),
                         ),
                       ),
                       const SizedBox(width: 10),
@@ -180,7 +210,7 @@ class _OverviewTabState extends State<OverviewTab> {
                     icon: Icons.speed,
                     label: 'By Odometer',
                     value: _nextOdometerReminder != null
-                        ? '${_nextOdometerReminder![DatabaseHelper.columnDueOdometer]} km'
+                        ? '${_nextOdometerReminder![DatabaseHelper.columnDueOdometer]} ${settings.unitType}' // <-- THE FIX
                         : 'No upcoming reminders',
                   ),
                 ],
@@ -213,15 +243,40 @@ class _OverviewTabState extends State<OverviewTab> {
                             final photo = _vehiclePhotos[index];
                             final photoPath = photo[DatabaseHelper.columnUri];
 
-                            return Container(
-                              width: 120,
-                              height: 120,
-                              margin: const EdgeInsets.only(right: 8.0),
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(8),
-                                image: DecorationImage(
-                                  image: FileImage(File(photoPath)),
-                                  fit: BoxFit.cover,
+                            return GestureDetector(
+                              // <-- WRAP WITH THIS
+                              onTap: () {
+                                // --- ADD THIS NAVIGATION ---
+                                // Create a simple list of just the paths
+                                final paths = _vehiclePhotos
+                                    .map(
+                                      (photo) =>
+                                          photo[DatabaseHelper.columnUri]
+                                              as String,
+                                    )
+                                    .toList();
+
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => FullScreenPhotoViewer(
+                                      photoPaths: paths,
+                                      initialIndex: index,
+                                    ),
+                                  ),
+                                );
+                                // --- END OF NAVIGATION ---
+                              },
+                              child: Container(
+                                width: 120,
+                                height: 120,
+                                margin: const EdgeInsets.only(right: 8.0),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(8),
+                                  image: DecorationImage(
+                                    image: FileImage(File(photoPath)),
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
                               ),
                             );

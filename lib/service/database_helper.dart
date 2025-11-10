@@ -5,10 +5,10 @@ import 'package:path_provider/path_provider.dart';
 
 class DatabaseHelper {
   static const _databaseName = "VehicleManager.db";
-  // --- FIX 1: SET VERSION BACK TO 1 ---
+  // --- We are keeping this at Version 1 ---
   static const _databaseVersion = 1;
 
-  // --- Table Names ---
+  // --- Table Names (unchanged) ---
   static const tableVehicles = 'vehicles';
   static const tableServices = 'services';
   static const tableServiceItems = 'service_items';
@@ -18,27 +18,30 @@ class DatabaseHelper {
   static const tableExpenses = 'expenses';
   static const tablePhotos = 'photos';
 
-  // --- Common Column Names ---
+  // --- Common Column Names (unchanged) ---
   static const columnId = '_id';
   static const columnCreatedAt = 'created_at';
 
-  // --- vehicles Table Columns ---
+  // --- vehicles Table Columns (unchanged) ---
   static const columnUserId = 'user_id';
   static const columnMake = 'make';
   static const columnModel = 'model';
   static const columnYear = 'year';
   static const columnRegNo = 'reg_no';
   static const columnInitialOdometer = 'initial_odometer';
-  static const columnCurrentOdometer =
-      'current_odometer'; // This is now part of version 1
+  static const columnCurrentOdometer = 'current_odometer';
 
-  // --- (All other column names) ---
+  // --- services Table Columns (NEW COLUMN ADDED) ---
   static const columnVehicleId = 'vehicle_id';
+  static const columnServiceName = 'service_name';
   static const columnServiceDate = 'service_date';
   static const columnOdometer = 'odometer';
   static const columnTotalCost = 'total_cost';
   static const columnVendorId = 'vendor_id';
+  static const columnTemplateId = 'template_id';
   static const columnNotes = 'notes';
+
+  // --- (All other column names are unchanged) ---
   static const columnServiceId = 'service_id';
   static const columnName = 'name';
   static const columnQty = 'qty';
@@ -46,7 +49,6 @@ class DatabaseHelper {
   static const columnIntervalDays = 'interval_days';
   static const columnIntervalKm = 'interval_km';
   static const columnVehicleType = 'vehicle_type';
-  static const columnTemplateId = 'template_id';
   static const columnDueDate = 'due_date';
   static const columnDueOdometer = 'due_odometer';
   static const columnRecurrenceRule = 'recurrence_rule';
@@ -60,7 +62,7 @@ class DatabaseHelper {
   static const columnParentId = 'parent_id';
   static const columnUri = 'uri';
 
-  // --- Singleton Class Setup ---
+  // --- Singleton Class Setup (unchanged) ---
   DatabaseHelper._privateConstructor();
   static final DatabaseHelper instance = DatabaseHelper._privateConstructor();
   static Database? _database;
@@ -70,6 +72,7 @@ class DatabaseHelper {
     return _database!;
   }
 
+  // --- _initDatabase (NO onUpgrade) ---
   _initDatabase() async {
     Directory documentsDirectory = await getApplicationDocumentsDirectory();
     String path = join(documentsDirectory.path, _databaseName);
@@ -78,18 +81,18 @@ class DatabaseHelper {
       version: _databaseVersion,
       onCreate: _onCreate,
       onConfigure: _onConfigure,
-      // --- FIX 2: REMOVE THE onUpgrade LINE ---
+      // No onUpgrade needed!
     );
   }
 
-  // Enable foreign keys
+  // (onConfigure is unchanged)
   Future _onConfigure(Database db) async {
     await db.execute('PRAGMA foreign_keys = ON');
   }
 
-  // --- Create all tables ---
+  // --- _onCreate (UPDATED) ---
   Future _onCreate(Database db, int version) async {
-    // This _onCreate function is correct and includes our new column
+    // vehicles table is unchanged (already has current_odometer)
     await db.execute('''
       CREATE TABLE $tableVehicles (
         $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +107,7 @@ class DatabaseHelper {
       )
     ''');
 
-    // (All other CREATE TABLE statements)
+    // vendors table is unchanged
     await db.execute('''
       CREATE TABLE $tableVendors (
         $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -113,10 +116,13 @@ class DatabaseHelper {
         $columnAddress TEXT
       )
     ''');
+
+    // --- services Table IS UPDATED ---
     await db.execute('''
       CREATE TABLE $tableServices (
         $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
         $columnVehicleId INTEGER NOT NULL,
+        $columnServiceName TEXT,
         $columnServiceDate TEXT NOT NULL,
         $columnOdometer INTEGER,
         $columnTotalCost REAL,
@@ -128,6 +134,8 @@ class DatabaseHelper {
         FOREIGN KEY ($columnVendorId) REFERENCES $tableVendors ($columnId) ON DELETE SET NULL
       )
     ''');
+
+    // (All other tables are unchanged)
     await db.execute('''
       CREATE TABLE $tableServiceItems (
         $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -136,9 +144,11 @@ class DatabaseHelper {
         $columnQty REAL,
         $columnUnitCost REAL,
         $columnTotalCost REAL,
+        $columnTemplateId INTEGER,
         FOREIGN KEY ($columnServiceId) REFERENCES $tableServices ($columnId) ON DELETE CASCADE
       )
     ''');
+
     await db.execute('''
       CREATE TABLE $tableServiceTemplates (
         $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -155,6 +165,7 @@ class DatabaseHelper {
         $columnTemplateId INTEGER,
         $columnDueDate TEXT,
         $columnDueOdometer INTEGER,
+        $columnNotes TEXT,
         $columnRecurrenceRule TEXT,
         $columnLeadTimeDays INTEGER,
         $columnLeadTimeKm INTEGER,
@@ -192,9 +203,37 @@ class DatabaseHelper {
     return await db.insert(tableVehicles, row);
   }
 
-  Future<List<Map<String, dynamic>>> queryAllVehicles() async {
+  Future<List<Map<String, dynamic>>> queryAllVehiclesWithNextReminder() async {
     Database db = await instance.database;
-    return await db.query(tableVehicles, orderBy: '$columnMake, $columnModel');
+    final String today = DateTime.now().toIso8601String().split('T')[0];
+
+    // This query is now more complex. It finds:
+    // 1. The vehicle (v)
+    // 2. The *first* photo for that vehicle (p)
+    // 3. The *next* reminder for that vehicle (r)
+    // 4. The *name* of that reminder's template (t)
+    final String sql =
+        '''
+    SELECT 
+      v.*,
+      r.$columnDueDate,
+      r.$columnDueOdometer,
+      t.$columnName AS template_name,
+      (
+        SELECT p.$columnUri 
+        FROM $tablePhotos p 
+        WHERE p.$columnParentId = v.$columnId AND p.$columnParentType = 'vehicle'
+        LIMIT 1
+      ) AS photo_uri
+    FROM $tableVehicles v
+    LEFT JOIN $tableReminders r ON r.$columnVehicleId = v.$columnId
+      AND (r.$columnDueDate >= ? OR r.$columnDueOdometer IS NOT NULL)
+    LEFT JOIN $tableServiceTemplates t ON r.$columnTemplateId = t.$columnId
+    GROUP BY v.$columnId
+    ORDER BY r.$columnDueDate ASC, r.$columnDueOdometer ASC
+  ''';
+
+    return await db.rawQuery(sql, [today]);
   }
 
   Future<Map<String, dynamic>?> queryVehicleById(int id) async {
@@ -643,5 +682,118 @@ class DatabaseHelper {
       }
     });
     print("Database restore complete.");
+  }
+
+  Future<bool> queryReminderExists(int vehicleId, int templateId) async {
+    Database db = await instance.database;
+    final result = await db.query(
+      tableReminders,
+      where: '$columnVehicleId = ? AND $columnTemplateId = ?',
+      whereArgs: [vehicleId, templateId],
+      limit: 1,
+    );
+    return result.isNotEmpty; // If the list is not empty, a reminder exists
+  }
+
+  Future<List<Map<String, dynamic>>> queryTemplateRemindersForVehicle(
+    int vehicleId,
+  ) async {
+    Database db = await instance.database;
+    return await db.query(
+      tableReminders,
+      where: '$columnVehicleId = ? AND $columnTemplateId IS NOT NULL',
+      whereArgs: [vehicleId],
+    );
+  }
+
+  Future<int> deleteRemindersByTemplate(int vehicleId, int templateId) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableReminders,
+      where: '$columnVehicleId = ? AND $columnTemplateId = ?',
+      whereArgs: [vehicleId, templateId],
+    );
+  }
+
+  Future<int> updateExpense(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    int id = row[columnId];
+    return await db.update(
+      tableExpenses,
+      row,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Deletes an expense by its ID
+  Future<int> deleteExpense(int id) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableExpenses,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> queryRemindersDueOn(String date) async {
+    Database db = await instance.database;
+
+    // This query JOINS with templates to get the name
+    final String sql =
+        '''
+      SELECT 
+        r.*, 
+        t.$columnName AS template_name
+      FROM $tableReminders r
+      LEFT JOIN $tableServiceTemplates t ON r.$columnTemplateId = t.$columnId
+      WHERE r.$columnVehicleId IS NOT NULL AND r.$columnDueDate = ?
+    ''';
+
+    return await db.rawQuery(sql, [date]);
+  }
+
+  Future<int> updateReminder(
+    int id,
+    String? newDueDate,
+    int? newDueOdometer,
+  ) async {
+    Database db = await instance.database;
+    return await db.update(
+      tableReminders,
+      {columnDueDate: newDueDate, columnDueOdometer: newDueOdometer},
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<double> queryTotalSpendingForType(int vehicleId, String type) async {
+    String tableName = (type == 'services') ? tableServices : tableExpenses;
+    Database db = await instance.database;
+    final totalResult = await db.rawQuery(
+      'SELECT SUM($columnTotalCost) as total FROM $tableName WHERE $columnVehicleId = ?',
+      [vehicleId],
+    );
+
+    double total = totalResult.isNotEmpty && totalResult.first['total'] != null
+        ? (totalResult.first['total'] as num).toDouble()
+        : 0.0;
+    return total;
+  }
+
+  Future<List<String>> queryDistinctExpenseCategories() async {
+    Database db = await instance.database;
+
+    final List<Map<String, dynamic>> result = await db.query(
+      tableExpenses,
+      distinct: true,
+      columns: [columnCategory],
+      where: '$columnCategory IS NOT NULL AND $columnCategory != ?',
+      whereArgs: [''], // Don't include empty strings
+      orderBy: '$columnCategory ASC',
+    );
+
+    // Convert the list of maps into a simple list of strings
+    return result.map((row) => row[columnCategory] as String).toList();
   }
 }

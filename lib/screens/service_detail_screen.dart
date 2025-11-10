@@ -1,7 +1,10 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import '../service/database_helper.dart';
+import 'package:provider/provider.dart';
+import '../service/database_helper.dart'; // Make sure this path is correct
+import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'add_service_screen.dart';
+import '../widgets/full_screen_photo_viewer.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   final int serviceId;
@@ -34,18 +37,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   Future<void> _loadServiceDetails() async {
-    // We need a new function to get a single service, but for now,
-    // we'll just re-query all of them and find the one we need.
-    // In a future step, we can optimize this.
-    // Let's create a temporary (less efficient) way to get the data.
-
-    // We'll re-use the queryServicesForVehicle (which gets all) and find ours.
-    // This is inefficient, but requires no DB changes right now.
-    // A better way is to add a `queryServiceById` function.
-
-    // Let's add that new DB function first... (see Part B)
-    // For now, let's assume we have the functions from Part B
-
     try {
       final serviceData = await dbHelper.queryServiceById(widget.serviceId);
       final itemsData = await dbHelper.queryServiceItems(widget.serviceId);
@@ -70,6 +61,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Get settings for currency and units
+    final settings = Provider.of<SettingsProvider>(context);
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Loading...')),
@@ -87,7 +81,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'Service on ${_service![DatabaseHelper.columnServiceDate]}',
+          _service![DatabaseHelper.columnServiceName] ?? 'Service Detail',
         ),
         actions: [
           IconButton(
@@ -100,12 +94,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   builder: (context) => AddServiceScreen(
                     vehicleId: widget.vehicleId,
                     currentOdometer: widget.currentOdometer,
-                    serviceId:
-                        widget.serviceId, // <-- This puts it in "Edit Mode"
+                    serviceId: widget.serviceId,
                   ),
                 ),
               ).then((_) {
-                // This refreshes the details when we come back
                 _loadServiceDetails();
               });
             },
@@ -117,38 +109,133 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Overview Card ---
-            _buildDetailCard(
-              title: 'Details',
-              children: [
-                _buildDetailRow(
-                  'Date:',
-                  _service![DatabaseHelper.columnServiceDate],
-                ),
-                _buildDetailRow(
-                  'Odometer:',
-                  '${_service![DatabaseHelper.columnOdometer]} km',
-                ),
-                _buildDetailRow('Vendor:', _service!['vendor_name'] ?? 'N/A'),
-                _buildDetailRow(
-                  'Total Cost:',
-                  '\$${_service![DatabaseHelper.columnTotalCost] ?? '0.00'}',
-                ),
-                _buildDetailRow(
-                  'Notes:',
-                  _service![DatabaseHelper.columnNotes] ?? 'N/A',
-                ),
-              ],
+            // --- THIS IS THE NEW DETAILS CARD ---
+            Card(
+              elevation: 4,
+              child: Column(
+                children: [
+                  _buildDetailTile(
+                    icon: Icons.calendar_today,
+                    title: 'Date',
+                    subtitle: _service![DatabaseHelper.columnServiceDate],
+                  ),
+                  _buildDetailTile(
+                    icon: Icons.speed,
+                    title: 'Odometer',
+                    subtitle:
+                        '${_service![DatabaseHelper.columnOdometer]} ${settings.unitType}',
+                  ),
+                  _buildDetailTile(
+                    icon: Icons.store,
+                    title: 'Vendor',
+                    subtitle: _service!['vendor_name'] ?? 'N/A',
+                  ),
+                  _buildDetailTile(
+                    icon: Icons.attach_money,
+                    title: 'Total Cost',
+                    subtitle:
+                        '${settings.currencySymbol}${_service![DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                    isGreen: true,
+                  ),
+                  _buildDetailTile(
+                    icon: Icons.notes,
+                    title: 'Notes',
+                    subtitle: _service![DatabaseHelper.columnNotes] ?? 'N/A',
+                    isThreeLine: true,
+                  ),
+                ],
+              ),
             ),
+            // --- END OF NEW CARD ---
 
             // --- Parts Card ---
             const SizedBox(height: 20),
-            _buildDetailCard(
-              title: 'Parts / Items (${_serviceItems.length})',
-              children: [
-                if (_serviceItems.isEmpty) const Text('No parts were added.'),
-                for (var item in _serviceItems) _buildPartRow(item),
-              ],
+            Card(
+              elevation: 4,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'PARTS / ITEMS (${_serviceItems.length})',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: Theme.of(context).primaryColor,
+                      ),
+                    ),
+                    const Divider(height: 20),
+                    if (_serviceItems.isEmpty)
+                      const Text('No parts were added.')
+                    else
+                      // Use a DataTable for a clean, aligned table
+                      DataTable(
+                        columnSpacing: 20, // Space between columns
+                        horizontalMargin: 0, // No extra margin
+                        headingRowHeight: 30,
+                        columns: const [
+                          DataColumn(
+                            label: Text(
+                              'Part',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Qty',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Cost',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            numeric: true,
+                          ),
+                          DataColumn(
+                            label: Text(
+                              'Total',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            numeric: true,
+                          ),
+                        ],
+                        rows: _serviceItems.map((item) {
+                          // Get the data from the item
+                          final name = item[DatabaseHelper.columnName];
+                          final qty = (item[DatabaseHelper.columnQty] as num)
+                              .toDouble();
+                          final cost =
+                              (item[DatabaseHelper.columnUnitCost] as num)
+                                  .toDouble();
+                          final total =
+                              (item[DatabaseHelper.columnTotalCost] as num)
+                                  .toDouble();
+
+                          return DataRow(
+                            cells: [
+                              DataCell(Text(name)),
+                              DataCell(Text(qty.toString())),
+                              DataCell(
+                                Text(
+                                  '${settings.currencySymbol}${cost.toStringAsFixed(2)}',
+                                ),
+                              ),
+                              DataCell(
+                                Text(
+                                  '${settings.currencySymbol}${total.toStringAsFixed(2)}',
+                                ),
+                              ),
+                            ],
+                          );
+                        }).toList(),
+                      ),
+                  ],
+                ),
+              ),
             ),
 
             // --- Photos Card ---
@@ -156,31 +243,55 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             _buildDetailCard(
               title: 'Photos (${_servicePhotos.length})',
               children: [
-                if (_servicePhotos.isEmpty) const Text('No photos were added.'),
-                SizedBox(
-                  height: 120,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _servicePhotos.length,
-                    itemBuilder: (context, index) {
-                      final photo = _servicePhotos[index];
-                      return Container(
-                        width: 120,
-                        height: 120,
-                        margin: const EdgeInsets.only(right: 8.0),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(8),
-                          image: DecorationImage(
-                            image: FileImage(
-                              File(photo[DatabaseHelper.columnUri]),
-                            ),
-                            fit: BoxFit.cover,
-                          ),
-                        ),
-                      );
-                    },
+                if (_servicePhotos.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(8.0),
+                    child: Text('No photos were added.'),
                   ),
-                ),
+                if (_servicePhotos.isNotEmpty)
+                  SizedBox(
+                    // Use SizedBox to give the gallery a fixed height
+                    height: 120,
+                    child: ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _servicePhotos.length,
+                      itemBuilder: (context, index) {
+                        final photo = _servicePhotos[index];
+                        final photoPath = photo[DatabaseHelper.columnUri];
+                        return GestureDetector(
+                          onTap: () {
+                            final paths = _servicePhotos
+                                .map(
+                                  (photo) =>
+                                      photo[DatabaseHelper.columnUri] as String,
+                                )
+                                .toList();
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => FullScreenPhotoViewer(
+                                  photoPaths: paths,
+                                  initialIndex: index,
+                                ),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            width: 120,
+                            height: 120,
+                            margin: const EdgeInsets.only(right: 8.0),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              image: DecorationImage(
+                                image: FileImage(File(photoPath)),
+                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
               ],
             ),
           ],
@@ -189,7 +300,31 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     );
   }
 
-  // Helper widget to build a styled card
+  // --- NEW: Helper widget for a styled ListTile ---
+  Widget _buildDetailTile({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    bool isGreen = false,
+    bool isThreeLine = false,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: Theme.of(context).primaryColor),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          fontSize: 16,
+          color: isGreen ? Colors.green[700] : null,
+          fontWeight: isGreen ? FontWeight.bold : FontWeight.normal,
+        ),
+      ),
+      isThreeLine: isThreeLine,
+    );
+  }
+  // --- END OF NEW HELPER ---
+
+  // Helper widget to build a styled card (for Parts and Photos)
   Widget _buildDetailCard({
     required String title,
     required List<Widget> children,
@@ -213,44 +348,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ...children,
           ],
         ),
-      ),
-    );
-  }
-
-  // Helper widget for a single detail row
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontWeight: FontWeight.bold)),
-          const SizedBox(width: 8),
-          Expanded(child: Text(value)),
-        ],
-      ),
-    );
-  }
-
-  // Helper widget for a single part row
-  Widget _buildPartRow(Map<String, dynamic> item) {
-    String name = item[DatabaseHelper.columnName];
-    double qty = (item[DatabaseHelper.columnQty] as num).toDouble();
-    double cost = (item[DatabaseHelper.columnUnitCost] as num).toDouble();
-    double total = (item[DatabaseHelper.columnTotalCost] as num).toDouble();
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Expanded(child: Text(name)),
-          Text('$qty x \$${cost.toStringAsFixed(2)}'),
-          Text(
-            '\$${total.toStringAsFixed(2)}',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-        ],
       ),
     );
   }

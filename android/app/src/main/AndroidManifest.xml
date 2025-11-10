@@ -3,8 +3,12 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
-        android:label="mechminder"
+        android:label="MechMinder"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:requestLegacyExternalStorage="true">
@@ -29,8 +33,18 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="true"
+            android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+                <intent-filter>
+                    <action android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+                    <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                    <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+                </intent-filter>
+        </receiver>
         </application>
+        
     <queries>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../service/database_helper.dart';
-import 'stats_pie_chart.dart';
+import '../widgets/stats_pie_chart.dart';
+import 'package:provider/provider.dart';
+import '../service/settings_provider.dart';
 
 class StatsTab extends StatefulWidget {
   final int vehicleId;
@@ -38,6 +40,10 @@ class _StatsTabState extends State<StatsTab> {
 
   @override
   Widget build(BuildContext context) {
+    // --- ADD THIS LINE ---
+    final settings = Provider.of<SettingsProvider>(context);
+    // --- END ADD ---
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -59,7 +65,9 @@ class _StatsTabState extends State<StatsTab> {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    '\$${_totalSpending.toStringAsFixed(2)}',
+                    // --- THIS IS THE FIX ---
+                    '${settings.currencySymbol}${_totalSpending.toStringAsFixed(2)}',
+                    // --- END OF FIX ---
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
@@ -72,11 +80,9 @@ class _StatsTabState extends State<StatsTab> {
           ),
 
           const SizedBox(height: 20),
-
-          const SizedBox(height: 20),
-          StatsPieChart(spendingData: _spendingByCategory),
-
-          // --- END OF NEW WIDGET ---
+          StatsPieChart(
+            spendingData: _spendingByCategory,
+          ), // ... (Your Pie Chart) ...
           const SizedBox(height: 20),
 
           // --- Spending by Category Card ---
@@ -109,7 +115,9 @@ class _StatsTabState extends State<StatsTab> {
                       return ListTile(
                         title: Text(category),
                         trailing: Text(
-                          '\$${total.toStringAsFixed(2)}',
+                          // --- THIS IS THE FIX ---
+                          '${settings.currencySymbol}${total.toStringAsFixed(2)}',
+                          // --- END OF FIX ---
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
                       );
@@ -119,7 +127,7 @@ class _StatsTabState extends State<StatsTab> {
             ),
           ),
 
-          // We can add charts here later
+          // ... (Your Bar Chart, if you have it) ...
         ],
       ),
     );

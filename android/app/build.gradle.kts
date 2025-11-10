@@ -5,12 +5,15 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val kotlin_version: String by rootProject.extra
+
 android {
     namespace = "com.example.mechminder"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
-    compileOptions {
+    compileOptions { 
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
     }
@@ -37,6 +40,11 @@ android {
             signingConfig = signingConfigs.getByName("debug")
         }
     }
+
+   dependencies {
+    implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}
 }
 
 flutter {
