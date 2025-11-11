@@ -866,4 +866,31 @@ class DatabaseHelper {
       whereArgs: [serviceId],
     );
   }
+
+  Future<List<Map<String, dynamic>>> queryServiceReport(int vehicleId) async {
+    Database db = await instance.database;
+
+    final String sql =
+        '''
+      SELECT 
+        s.$columnId, 
+        s.$columnServiceName,
+        s.$columnServiceDate,
+        s.$columnOdometer,
+        si.$columnName AS part_name,
+        si.$columnQty AS part_qty,
+        si.$columnUnitCost AS part_cost,
+        si.$columnTotalCost AS part_total,
+        v.$columnName AS vendor_name,
+        t.$columnName AS template_name
+      FROM $tableServices s
+      LEFT JOIN $tableServiceItems si ON si.$columnServiceId = s.$columnId
+      LEFT JOIN $tableVendors v ON s.$columnVendorId = v.$columnId
+      LEFT JOIN $tableServiceTemplates t ON si.$columnTemplateId = t.$columnId
+      WHERE s.$columnVehicleId = ?
+      ORDER BY s.$columnServiceDate DESC, s.$columnId, si.$columnId
+    ''';
+
+    return await db.rawQuery(sql, [vehicleId]);
+  }
 }

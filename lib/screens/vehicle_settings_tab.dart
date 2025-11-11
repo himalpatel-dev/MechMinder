@@ -3,6 +3,9 @@ import '../service/database_helper.dart';
 // We'll import the AddVehicleScreen but re-use it for "editing"
 import 'add_vehicle.dart';
 import 'vehicle_list.dart'; // To navigate home after delete
+import 'package:provider/provider.dart';
+import '../service/excel_service.dart';
+import '../service/settings_provider.dart';
 
 class VehicleSettingsTab extends StatelessWidget {
   final Map<String, dynamic> vehicle;
@@ -75,6 +78,9 @@ class VehicleSettingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // --- 1. Get the settings provider ---
+    final settings = Provider.of<SettingsProvider>(context);
+
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
@@ -88,12 +94,49 @@ class VehicleSettingsTab extends StatelessWidget {
                   title: const Text('Edit Vehicle Details'),
                   subtitle: const Text('Update make, model, year, etc.'),
                   onTap: () {
-                    // We'll implement this "Edit" feature in a future step
-                    // as it requires modifying the AddVehicleScreen to accept data.
                     _navigateToEditVehicle(context);
                   },
                 ),
-                const Divider(height: 1),
+
+                // --- 2. ADD THE NEW EXPORT BUTTON ---
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                ListTile(
+                  leading: Icon(Icons.download, color: Colors.green[700]),
+                  title: const Text('Export Vehicle Report'),
+                  subtitle: const Text('Save services and expenses to Excel'),
+                  onTap: () async {
+                    // Show a "loading" snackbar
+                    final scaffoldMessenger = ScaffoldMessenger.of(context);
+                    scaffoldMessenger.showSnackBar(
+                      const SnackBar(content: Text('Creating report...')),
+                    );
+
+                    // Create the service and run the report
+                    final excelService = ExcelService(
+                      dbHelper: DatabaseHelper.instance,
+                      settings: settings,
+                    );
+
+                    final result = await excelService.createExcelReport(
+                      vehicle[DatabaseHelper.columnId],
+                      '${vehicle[DatabaseHelper.columnMake]} ${vehicle[DatabaseHelper.columnModel]}',
+                    );
+
+                    // Show the result
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text(result ?? 'An unknown error occurred.'),
+                        backgroundColor:
+                            result != null && result.startsWith('Report saved')
+                            ? Colors.green
+                            : Colors.red,
+                      ),
+                    );
+                  },
+                ),
+
+                // --- END OF NEW BUTTON ---
+                const Divider(height: 1, indent: 16, endIndent: 16),
                 ListTile(
                   leading: const Icon(Icons.delete_forever, color: Colors.red),
                   title: const Text('Delete Vehicle'),
