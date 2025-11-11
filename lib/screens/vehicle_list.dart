@@ -8,7 +8,7 @@ import 'app_settings_screen.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
 import 'dart:io';
-import '../widgets/mini_spending_chart.dart';
+import '../widgets/mini_spending_chart.dart'; // Make sure this path is correct
 
 class VehicleListScreen extends StatefulWidget {
   const VehicleListScreen({super.key});
@@ -19,12 +19,7 @@ class VehicleListScreen extends StatefulWidget {
 
 class _VehicleListScreenState extends State<VehicleListScreen> {
   final dbHelper = DatabaseHelper.instance;
-
-  // This list will hold our vehicles
   List<Map<String, dynamic>> _vehicles = [];
-
-  // A variable to track loading or errors
-  String _statusMessage = "Loading vehicles...";
   bool _isLoading = true;
 
   @override
@@ -33,18 +28,14 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
     _refreshVehicleList();
   }
 
-  void _refreshVehicleList() async {
+  Future<void> _refreshVehicleList() async {
+    // (This function is unchanged)
     setState(() {
       _isLoading = true;
-    }); // Show loading spinner
-
-    // 1. Get all vehicles (with their reminders and photos)
+    });
     final allVehicles = await dbHelper.queryAllVehiclesWithNextReminder();
-
-    // 2. Loop through each vehicle and get its spending data
     List<Map<String, dynamic>> vehiclesWithSpending = [];
     for (var vehicle in allVehicles) {
-      // We have to run these queries for each vehicle
       final serviceTotal = await dbHelper.queryTotalSpendingForType(
         vehicle[DatabaseHelper.columnId],
         'services',
@@ -53,14 +44,11 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
         vehicle[DatabaseHelper.columnId],
         'expenses',
       );
-
-      // Add the new data to the vehicle's map
       Map<String, dynamic> vehicleData = Map.from(vehicle);
       vehicleData['service_total'] = serviceTotal;
       vehicleData['expense_total'] = expenseTotal;
       vehiclesWithSpending.add(vehicleData);
     }
-
     setState(() {
       _vehicles = vehiclesWithSpending;
       _isLoading = false;
@@ -68,12 +56,11 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
   }
 
   void _navigateToAddVehicle() {
-    print("[DEBUG] Plus button tapped. Navigating to AddVehicleScreen...");
+    // (This function is unchanged)
     Navigator.push(
       context,
       MaterialPageRoute(builder: (context) => const AddVehicleScreen()),
     ).then((_) {
-      // This runs when we come back
       _refreshVehicleList();
     });
   }
@@ -86,7 +73,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
       appBar: AppBar(
         title: const Text('My Vehicles'),
         actions: [
-          // Your existing buttons (Vendors, Templates, Settings)
+          // (Your App Bar buttons are unchanged)
           IconButton(
             icon: const Icon(Icons.store),
             tooltip: 'Manage Vendors',
@@ -130,7 +117,6 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
         ],
       ),
 
-      // --- BODY IS NOW UPDATED ---
       body: _isLoading
           ? const Center(
               child: Column(
@@ -138,7 +124,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 10),
-                  Text("Loading vehicles..."),
+                  Text("Loading dashboard..."),
                 ],
               ),
             )
@@ -150,16 +136,8 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                 textAlign: TextAlign.center,
               ),
             )
-          // --- USE GridView.builder INSTEAD OF ListView ---
-          : GridView.builder(
+          : ListView.builder(
               padding: const EdgeInsets.all(8.0),
-              // This creates a 2-column grid
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2, // 2 vehicles per row
-                childAspectRatio: 0.8, // Adjust this ratio (width / height)
-                mainAxisSpacing: 8.0,
-                crossAxisSpacing: 8.0,
-              ),
               itemCount: _vehicles.length,
               itemBuilder: (context, index) {
                 final vehicle = _vehicles[index];
@@ -178,19 +156,20 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                   }
                 }
 
-                // --- THIS IS THE NEW LOGIC ---
-                // Get spending data for the text
+                // (Get spending data - same as before)
                 final double serviceTotal = vehicle['service_total'] ?? 0.0;
                 final double expenseTotal = vehicle['expense_total'] ?? 0.0;
                 final double totalSpending = serviceTotal + expenseTotal;
-                // --- END OF NEW LOGIC ---
 
+                // --- THIS IS THE REDESIGNED CARD UI ---
                 return Card(
-                  clipBehavior: Clip
-                      .antiAlias, // Clips the image to the card's rounded border
+                  clipBehavior: Clip.antiAlias,
+                  margin: const EdgeInsets.symmetric(vertical: 8.0),
                   elevation: 4,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   child: InkWell(
-                    // Makes the whole card tappable
                     onTap: () {
                       final int vehicleId = vehicle[DatabaseHelper.columnId];
                       Navigator.push(
@@ -204,57 +183,146 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                       });
                     },
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // --- 1. THE IMAGE (Unchanged) ---
-                        AspectRatio(
-                          aspectRatio: 1.5, // Adjust this (width / height)
-                          child: _buildVehicleImage(vehicle['photo_uri']),
-                        ),
-
-                        // --- 2. THE DETAILS (Updated) ---
-                        Padding(
-                          padding: const EdgeInsets.all(8.0),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
+                        // --- 1. THE IMAGE & TITLE STACK (UPDATED) ---
+                        Stack(
+                          children: [
+                            AspectRatio(
+                              aspectRatio: 16 / 9,
+                              child: _buildVehicleImage(vehicle['photo_uri']),
+                            ),
+                            Positioned.fill(
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      Colors.black.withOpacity(0.8),
+                                      Colors.transparent,
+                                    ],
+                                    begin: Alignment.bottomCenter,
+                                    end: Alignment.topCenter,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            // --- FIX 1: Removed Year/RegNo from here ---
+                            Positioned(
+                              bottom: 12,
+                              left: 12,
+                              right: 12,
+                              child: Text(
                                 '${vehicle[DatabaseHelper.columnMake]} ${vehicle[DatabaseHelper.columnModel]}',
                                 style: const TextStyle(
+                                  color: Colors.white,
                                   fontWeight: FontWeight.bold,
+                                  fontSize: 22,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
                               ),
-                              const SizedBox(height: 2),
-                              Text(
-                                '${vehicle[DatabaseHelper.columnYear] ?? 'N/A'} | ${vehicle[DatabaseHelper.columnRegNo] ?? 'N/A'}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                nextReminderText,
-                                style: const TextStyle(fontSize: 12),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
+                            ),
+                            // --- END OF FIX 1 ---
+                          ],
+                        ),
 
-                              // --- THIS IS THE FIX ---
-                              // We've replaced the chart with this Text
-                              const SizedBox(height: 8),
-                              Text(
-                                'Total Spent: ${settings.currencySymbol}${totalSpending.toStringAsFixed(0)}',
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
+                        // --- 2. THE DETAILS ROW (UPDATED) ---
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 16,
+                          ),
+                          child: Row(
+                            children: [
+                              // Left Side: Text Details
+                              Expanded(
+                                flex: 3,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // --- FIX 1: Added Year/RegNo here ---
+                                    Text(
+                                      '${vehicle[DatabaseHelper.columnYear] ?? 'N/A'} | ${vehicle[DatabaseHelper.columnRegNo] ?? 'N/A'}',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                    const SizedBox(height: 6),
+                                    // --- END OF FIX 1 ---
+                                    Text(
+                                      'NEXT REMINDER',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        color: Colors.grey[600],
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      nextReminderText,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                        fontSize: 14,
+                                      ),
+                                      maxLines: 2,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ],
                                 ),
                               ),
-                              // --- END OF FIX ---
+                              const SizedBox(width: 8),
+                              // Right Side: Chart & Total
+                              Expanded(
+                                flex: 2,
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    // --- FIX 2: Check if spending is zero ---
+                                    if (totalSpending == 0)
+                                      Column(
+                                        children: [
+                                          Icon(
+                                            Icons.pie_chart_outline,
+                                            size: 40,
+                                            color: Colors.grey[300],
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${settings.currencySymbol}0 total',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                              color: Colors.grey,
+                                            ),
+                                          ),
+                                        ],
+                                      )
+                                    else
+                                      Column(
+                                        children: [
+                                          SizedBox(
+                                            width: 50,
+                                            height: 50,
+                                            child: MiniSpendingChart(
+                                              serviceSpending: serviceTotal,
+                                              expenseSpending: expenseTotal,
+                                            ),
+                                          ),
+                                          const SizedBox(height: 4),
+                                          Text(
+                                            '${settings.currencySymbol}${totalSpending.toStringAsFixed(0)} total',
+                                            style: const TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    // --- END OF FIX 2 ---
+                                  ],
+                                ),
+                              ),
                             ],
                           ),
                         ),
@@ -271,21 +339,12 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
     );
   }
 
-  // --- ADD THIS NEW HELPER WIDGET ---
-  // This widget builds the image, or a placeholder if there is no image
+  // (This helper function is unchanged)
   Widget _buildVehicleImage(String? photoPath) {
     if (photoPath != null && photoPath.isNotEmpty) {
-      // We have a photo
       return Image.file(
         File(photoPath),
         fit: BoxFit.cover,
-
-        // --- THIS IS THE FIX ---
-        // 'loadingBuilder' is not a valid parameter for Image.file,
-        // so we remove it. File loading is usually instant.
-        // --- END OF FIX ---
-
-        // Show an error icon if the file is missing/corrupt
         errorBuilder: (context, error, stackTrace) {
           return Container(
             color: Colors.grey[200],
@@ -294,7 +353,6 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
         },
       );
     } else {
-      // No photo, show a placeholder
       return Container(
         color: Colors.grey[200],
         child: Icon(Icons.directions_car, color: Colors.grey[400], size: 60),

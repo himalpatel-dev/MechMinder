@@ -37,8 +37,18 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   Future<void> _loadServiceDetails() async {
+    // We check if the widget is still "mounted" (on the screen)
+    // before updating the state.
+    if (!mounted) return;
+
     try {
       final serviceData = await dbHelper.queryServiceById(widget.serviceId);
+      if (serviceData == null) {
+        // If service was deleted, pop back
+        if (mounted) Navigator.of(context).pop();
+        return;
+      }
+
       final itemsData = await dbHelper.queryServiceItems(widget.serviceId);
       final photosData = await dbHelper.queryPhotosForParent(
         widget.serviceId,
@@ -53,15 +63,68 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       });
     } catch (e) {
       print("Error loading service details: $e");
-      setState(() {
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
     }
+  }
+
+  // --- NEW: FUNCTION TO SHOW DELETE CONFIRMATION ---
+  void _showDeleteConfirmation() {
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Delete Service?'),
+          content: const Text(
+            'Are you sure you want to permanently delete this service record? All its parts and photos will be lost.',
+            style: TextStyle(color: Colors.black),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.black, // Black text
+              ),
+              onPressed: () async {
+                // Delete all related data in a transaction
+                print("Deleting service, items, and photos...");
+                await dbHelper.deleteService(widget.serviceId);
+                await dbHelper.deleteAllServiceItemsForService(
+                  widget.serviceId,
+                );
+                await dbHelper.deletePhotosForParent(
+                  widget.serviceId,
+                  'service',
+                );
+
+                // --- 2. THIS IS THE FIX ---
+                // Delete all reminders linked to this service
+                print("Deleting associated reminders...");
+                await dbHelper.deleteRemindersByService(widget.serviceId);
+                // --- END OF FIX ---
+
+                if (mounted) {
+                  Navigator.of(ctx).pop(); // Close the dialog
+                  Navigator.of(context).pop(); // Pop back
+                }
+              },
+              child: const Text('Delete Permanently'),
+            ),
+          ],
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // Get settings for currency and units
     final settings = Provider.of<SettingsProvider>(context);
 
     if (_isLoading) {
@@ -98,10 +161,17 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 ),
               ).then((_) {
-                _loadServiceDetails();
+                _loadServiceDetails(); // Refresh after editing
               });
             },
           ),
+          // --- NEW: DELETE BUTTON ---
+          IconButton(
+            icon: const Icon(Icons.delete_forever),
+            tooltip: 'Delete Service',
+            onPressed: _showDeleteConfirmation,
+          ),
+          // --- END OF NEW BUTTON ---
         ],
       ),
       body: SingleChildScrollView(
@@ -109,7 +179,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- THIS IS THE NEW DETAILS CARD ---
+            // --- Details Card (Unchanged) ---
             Card(
               elevation: 4,
               child: Column(
@@ -146,9 +216,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 ],
               ),
             ),
-            // --- END OF NEW CARD ---
 
-            // --- Parts Card ---
+            // --- Parts Card (Unchanged) ---
             const SizedBox(height: 20),
             Card(
               elevation: 4,
@@ -169,10 +238,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     if (_serviceItems.isEmpty)
                       const Text('No parts were added.')
                     else
-                      // Use a DataTable for a clean, aligned table
                       DataTable(
-                        columnSpacing: 20, // Space between columns
-                        horizontalMargin: 0, // No extra margin
+                        columnSpacing: 20,
+                        horizontalMargin: 0,
                         headingRowHeight: 30,
                         columns: const [
                           DataColumn(
@@ -204,7 +272,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                           ),
                         ],
                         rows: _serviceItems.map((item) {
-                          // Get the data from the item
                           final name = item[DatabaseHelper.columnName];
                           final qty = (item[DatabaseHelper.columnQty] as num)
                               .toDouble();
@@ -238,7 +305,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               ),
             ),
 
-            // --- Photos Card ---
+            // --- Photos Card (Unchanged) ---
             const SizedBox(height: 20),
             _buildDetailCard(
               title: 'Photos (${_servicePhotos.length})',
@@ -250,7 +317,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 if (_servicePhotos.isNotEmpty)
                   SizedBox(
-                    // Use SizedBox to give the gallery a fixed height
                     height: 120,
                     child: ListView.builder(
                       scrollDirection: Axis.horizontal,
@@ -300,7 +366,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     );
   }
 
-  // --- NEW: Helper widget for a styled ListTile ---
+  // (Helper widget is unchanged)
   Widget _buildDetailTile({
     required IconData icon,
     required String title,
@@ -322,9 +388,8 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
       isThreeLine: isThreeLine,
     );
   }
-  // --- END OF NEW HELPER ---
 
-  // Helper widget to build a styled card (for Parts and Photos)
+  // (Helper widget is unchanged)
   Widget _buildDetailCard({
     required String title,
     required List<Widget> children,

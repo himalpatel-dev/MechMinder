@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
-import '../service/database_helper.dart';
 import 'dart:io';
-import '../widgets/full_screen_photo_viewer.dart';
-import '../service/notification_service.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../service/settings_provider.dart';
+import '../service/database_helper.dart'; // Make sure this path is correct
+import '../service/settings_provider.dart'; // Make sure this path is correct
+import '../service/notification_service.dart'; // Make sure this path is correct
+import '../widgets/full_screen_photo_viewer.dart'; // Make sure this path is correct
 
 class OverviewTab extends StatefulWidget {
   final int vehicleId;
@@ -18,13 +18,13 @@ class _OverviewTabState extends State<OverviewTab> {
   final dbHelper = DatabaseHelper.instance;
   final TextEditingController _odometerController = TextEditingController();
 
+  // ignore: unused_field
+  Map<String, dynamic>? _vehicle;
   Map<String, dynamic>? _nextDueDateReminder;
   Map<String, dynamic>? _nextOdometerReminder;
-
   List<Map<String, dynamic>> _vehiclePhotos = [];
 
   bool _isLoading = true;
-  // --- ADD THIS VARIABLE TO STORE ERRORS ---
   String? _errorMessage;
 
   @override
@@ -34,57 +34,49 @@ class _OverviewTabState extends State<OverviewTab> {
   }
 
   Future<void> _loadData() async {
-    // --- ADD try...catch BLOCK ---
+    // (This function is unchanged)
     try {
-      // 1. Get vehicle details
-      final vehicleData = await dbHelper.queryVehicleById(widget.vehicleId);
+      final data = await Future.wait([
+        dbHelper.queryVehicleById(widget.vehicleId),
+        dbHelper.queryNextDueSummary(widget.vehicleId),
+        dbHelper.queryPhotosForParent(widget.vehicleId, 'vehicle'),
+      ]);
 
-      // 2. Get reminder summary
-      final summary = await dbHelper.queryNextDueSummary(widget.vehicleId);
-
-      // 3. Get vehicle photos
-      final photos = await dbHelper.queryPhotosForParent(
-        widget.vehicleId,
-        'vehicle',
-      );
+      final vehicleData = data[0] as Map<String, dynamic>?;
+      final summary = data[1] as Map<String, Map<String, dynamic>?>;
+      final photos = data[2] as List<Map<String, dynamic>>;
 
       if (vehicleData == null) {
-        // This is a common error we can check for
         throw Exception("Vehicle data not found (ID: ${widget.vehicleId})");
       }
 
       setState(() {
-        // This line is a common place for errors if the column is null
+        _vehicle = vehicleData;
         _odometerController.text =
             (vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0).toString();
-
         _nextDueDateReminder = summary['nextByDate'];
         _nextOdometerReminder = summary['nextByOdometer'];
+        _vehiclePhotos = List.from(photos);
         _isLoading = false;
-        _vehiclePhotos = photos;
-        _errorMessage = null; // Clear any old errors
+        _errorMessage = null;
       });
-      print("[DEBUG OverviewTab] Data load and setState complete.");
     } catch (e) {
-      // --- CATCH AND DISPLAY THE ERROR ---
-      print("[DEBUG OverviewAab] !!!--- ERROR in _loadData ---!!!");
+      print("[DEBUG OverviewTab] !!!--- ERROR in _loadData ---!!!");
       print(e);
       setState(() {
         _isLoading = false;
-        _errorMessage = e.toString(); // Store the error to show it on screen
+        _errorMessage = e.toString();
       });
     }
   }
 
   void _saveOdometer() async {
-    // --- 1. Get existing data ---
+    // (This function is unchanged)
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
 
-    // --- 2. Save the new odometer to the DB ---
     await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
 
-    // --- 3. Show confirmation SnackBar ---
     scaffoldMessenger.showSnackBar(
       const SnackBar(
         content: Text('Odometer updated!'),
@@ -95,47 +87,45 @@ class _OverviewTabState extends State<OverviewTab> {
       FocusScope.of(context).unfocus();
     }
 
-    // --- 4. NEW: CHECK ODOMETER-BASED REMINDERS ---
     print("Checking odometer-based reminders...");
-
-    // Get all reminders for this vehicle
     final allReminders = await dbHelper.queryRemindersForVehicle(
       widget.vehicleId,
     );
 
     for (var reminder in allReminders) {
       final dueOdometer = reminder[DatabaseHelper.columnDueOdometer];
-
-      // Check if it's an odometer reminder AND if we've passed the value
       if (dueOdometer != null && newOdometer >= dueOdometer) {
         final int reminderId = reminder[DatabaseHelper.columnId];
         final String templateName = reminder['template_name'] ?? 'Service';
-
-        print(
-          "  > Odometer due for '$templateName'! Sending notification and deleting reminder.",
-        );
-
-        // 5. Send immediate notification
+        print("  > Odometer due for '$templateName'! Sending notification.");
         await NotificationService().showImmediateReminder(
-          id: reminderId, // Use the reminder's ID
+          id: reminderId,
           title: 'Vehicle Service Due',
           body:
               'Your "$templateName" service is due! (Reached $dueOdometer km).',
         );
       }
     }
-    // --- END OF NEW LOGIC ---
+    _refreshReminderSummary();
+  }
+
+  Future<void> _refreshReminderSummary() async {
+    // (This function is unchanged)
+    final summary = await dbHelper.queryNextDueSummary(widget.vehicleId);
+    setState(() {
+      _nextDueDateReminder = summary['nextByDate'];
+      _nextOdometerReminder = summary['nextByOdometer'];
+    });
   }
 
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
 
-    // --- ADD THIS ERROR CHECK ---
-    // If we have an error, show it instead of the content
     if (_errorMessage != null) {
       return Center(
         child: Padding(
@@ -148,13 +138,12 @@ class _OverviewTabState extends State<OverviewTab> {
         ),
       );
     }
-    // --- END ERROR CHECK ---
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16.0),
       child: Column(
         children: [
-          // --- THE BIG CARD ---
+          // --- 1. Odometer Card (UPDATED) ---
           Card(
             elevation: 4,
             child: Padding(
@@ -162,10 +151,18 @@ class _OverviewTabState extends State<OverviewTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text(
-                    'CURRENT ODOMETER',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  // --- THIS IS THE FIX ---
+                  Row(
+                    children: [
+                      Icon(Icons.speed, size: 14, color: Colors.grey[600]),
+                      const SizedBox(width: 4),
+                      Text(
+                        'CURRENT ODOMETER',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    ],
                   ),
+                  // --- END OF FIX ---
                   Row(
                     children: [
                       Expanded(
@@ -177,47 +174,60 @@ class _OverviewTabState extends State<OverviewTab> {
                             fontWeight: FontWeight.bold,
                           ),
                           decoration: InputDecoration(
-                            suffixText: settings.unitType, // <-- THE FIX
+                            suffixText: settings.unitType,
                           ),
                         ),
                       ),
                       const SizedBox(width: 10),
                       ElevatedButton(
-                        onPressed: _saveOdometer, // Use our saved function
+                        onPressed: _saveOdometer,
                         child: const Text('UPDATE'),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 20),
-                  const Divider(),
-                  const SizedBox(height: 10),
-
-                  // --- NEXT DUE SUMMARY ---
-                  const Text(
-                    'NEXT DUE SUMMARY',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 10),
-                  _buildNextDueRow(
-                    icon: Icons.calendar_today,
-                    label: 'By Date',
-                    value: _nextDueDateReminder != null
-                        ? '${_nextDueDateReminder![DatabaseHelper.columnDueDate]}'
-                        : 'No upcoming reminders',
-                  ),
-                  const SizedBox(height: 10),
-                  _buildNextDueRow(
-                    icon: Icons.speed,
-                    label: 'By Odometer',
-                    value: _nextOdometerReminder != null
-                        ? '${_nextOdometerReminder![DatabaseHelper.columnDueOdometer]} ${settings.unitType}' // <-- THE FIX
-                        : 'No upcoming reminders',
                   ),
                 ],
               ),
             ),
           ),
-          // --- ADD THIS NEW PHOTO GALLERY CARD ---
+
+          // --- 2. Next Due Summary Card (Unchanged) ---
+          const SizedBox(height: 20),
+          Card(
+            elevation: 4,
+            child: Column(
+              children: [
+                const ListTile(
+                  title: Text(
+                    'Next Due Summary',
+                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+                  ),
+                ),
+                const Divider(height: 1, indent: 16, endIndent: 16),
+                _buildDetailTile(
+                  icon: Icons.calendar_today,
+                  title:
+                      _nextDueDateReminder?['template_name'] ??
+                      'No date-based reminders',
+                  subtitle: _nextDueDateReminder != null
+                      ? 'Due by: ${_nextDueDateReminder![DatabaseHelper.columnDueDate]}'
+                      : 'All caught up!',
+                  isFaded: _nextDueDateReminder == null,
+                ),
+                _buildDetailTile(
+                  icon: Icons.speed,
+                  title:
+                      _nextOdometerReminder?['template_name'] ??
+                      'No odometer-based reminders',
+                  subtitle: _nextOdometerReminder != null
+                      ? 'Due by: ${_nextOdometerReminder![DatabaseHelper.columnDueOdometer]} ${settings.unitType}'
+                      : 'All caught up!',
+                  isFaded: _nextOdometerReminder == null,
+                ),
+              ],
+            ),
+          ),
+
+          // --- 3. Photo Gallery Card (Unchanged) ---
           const SizedBox(height: 20),
           Card(
             elevation: 4,
@@ -231,8 +241,8 @@ class _OverviewTabState extends State<OverviewTab> {
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                 ),
-                SizedBox(
-                  height: 120, // Gallery height
+                Container(
+                  height: 120,
                   child: _vehiclePhotos.isEmpty
                       ? const Center(child: Text('No photos added yet.'))
                       : ListView.builder(
@@ -244,10 +254,7 @@ class _OverviewTabState extends State<OverviewTab> {
                             final photoPath = photo[DatabaseHelper.columnUri];
 
                             return GestureDetector(
-                              // <-- WRAP WITH THIS
                               onTap: () {
-                                // --- ADD THIS NAVIGATION ---
-                                // Create a simple list of just the paths
                                 final paths = _vehiclePhotos
                                     .map(
                                       (photo) =>
@@ -255,7 +262,6 @@ class _OverviewTabState extends State<OverviewTab> {
                                               as String,
                                     )
                                     .toList();
-
                                 Navigator.push(
                                   context,
                                   MaterialPageRoute(
@@ -265,7 +271,6 @@ class _OverviewTabState extends State<OverviewTab> {
                                     ),
                                   ),
                                 );
-                                // --- END OF NAVIGATION ---
                               },
                               child: Container(
                                 width: 120,
@@ -283,7 +288,7 @@ class _OverviewTabState extends State<OverviewTab> {
                           },
                         ),
                 ),
-                const SizedBox(height: 16), // Padding at the bottom
+                const SizedBox(height: 16),
               ],
             ),
           ),
@@ -292,20 +297,32 @@ class _OverviewTabState extends State<OverviewTab> {
     );
   }
 
-  // Helper widget for a formatted row
-  Widget _buildNextDueRow({
+  // --- (Helper widget is unchanged) ---
+  Widget _buildDetailTile({
     required IconData icon,
-    required String label,
-    required String value,
+    required String title,
+    required String subtitle,
+    bool isFaded = false,
   }) {
-    return Row(
-      children: [
-        Icon(icon, color: Colors.blue, size: 20),
-        const SizedBox(width: 10),
-        Text('$label:', style: const TextStyle(fontWeight: FontWeight.bold)),
-        const SizedBox(width: 5),
-        Expanded(child: Text(value)),
-      ],
+    return ListTile(
+      leading: Icon(
+        icon,
+        color: isFaded ? Colors.grey[400] : Theme.of(context).primaryColor,
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          fontWeight: FontWeight.bold,
+          color: isFaded ? Colors.grey[600] : null,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: TextStyle(
+          fontSize: 14,
+          color: isFaded ? Colors.grey[600] : null,
+        ),
+      ),
     );
   }
 }

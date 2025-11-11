@@ -163,6 +163,7 @@ class DatabaseHelper {
         $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
         $columnVehicleId INTEGER NOT NULL,
         $columnTemplateId INTEGER,
+        $columnServiceId INTEGER,
         $columnDueDate TEXT,
         $columnDueOdometer INTEGER,
         $columnNotes TEXT,
@@ -288,7 +289,7 @@ class DatabaseHelper {
     FROM $tableServices s
     LEFT JOIN $tableVendors v ON s.$columnVendorId = v.$columnId
     WHERE s.$columnVehicleId = ?
-    ORDER BY s.$columnServiceDate DESC
+    ORDER BY s.$columnCreatedAt DESC
   ''';
 
     return await db.rawQuery(sql, [vehicleId]);
@@ -795,5 +796,74 @@ class DatabaseHelper {
 
     // Convert the list of maps into a simple list of strings
     return result.map((row) => row[columnCategory] as String).toList();
+  }
+
+  Future<int> updateVendor(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    int id = row[columnId];
+    return await db.update(
+      tableVendors,
+      row,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Deletes a vendor by its ID
+  Future<int> deleteVendor(int id) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableVendors,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> updateServiceTemplate(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    int id = row[columnId];
+    return await db.update(
+      tableServiceTemplates,
+      row,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Deletes a service template by its ID
+  Future<int> deleteServiceTemplate(int id) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableServiceTemplates,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deletePhotosForParent(int parentId, String parentType) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tablePhotos,
+      where: '$columnParentId = ? AND $columnParentType = ?',
+      whereArgs: [parentId, parentType],
+    );
+  }
+
+  Future<int> deleteService(int id) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableServices,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteRemindersByService(int serviceId) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableReminders,
+      where: '$columnServiceId = ?',
+      whereArgs: [serviceId],
+    );
   }
 }

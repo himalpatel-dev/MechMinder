@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
 
+enum ExpenseGrouping { byDate, byCategory }
+
 class ExpensesTab extends StatefulWidget {
   final int vehicleId;
   const ExpensesTab({super.key, required this.vehicleId});
@@ -16,8 +18,11 @@ class _ExpensesTabState extends State<ExpensesTab> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _expenses = [];
   bool _isLoading = true;
-
   List<String> _allCategories = [];
+  ExpenseGrouping _currentGrouping = ExpenseGrouping.byDate;
+
+  // --- THIS IS THE FIX: A FormKey for the dialog ---
+  final _expenseFormKey = GlobalKey<FormState>();
 
   // Controllers (unchanged)
   final TextEditingController _dateController = TextEditingController();
@@ -37,10 +42,8 @@ class _ExpensesTabState extends State<ExpensesTab> {
       dbHelper.queryExpensesForVehicle(widget.vehicleId),
       dbHelper.queryDistinctExpenseCategories(),
     ]);
-
     final allExpenses = data[0] as List<Map<String, dynamic>>;
     final allCategories = data[1] as List<String>;
-
     setState(() {
       _expenses = allExpenses;
       _allCategories = allCategories;
@@ -52,7 +55,6 @@ class _ExpensesTabState extends State<ExpensesTab> {
     SettingsProvider settings, {
     Map<String, dynamic>? expense,
   }) {
-    // (This function is unchanged)
     bool isEditing = expense != null;
 
     if (isEditing) {
@@ -74,117 +76,141 @@ class _ExpensesTabState extends State<ExpensesTab> {
         return AlertDialog(
           title: Text(isEditing ? 'Edit Expense' : 'Add New Expense'),
           content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: _dateController,
-                  decoration: const InputDecoration(
-                    labelText: 'Date',
-                    suffixIcon: Icon(Icons.calendar_today),
-                  ),
-                  readOnly: true,
-                  onTap: () async {
-                    DateTime? pickedDate = await showDatePicker(
-                      context: context,
-                      initialDate:
-                          DateTime.tryParse(_dateController.text) ??
-                          DateTime.now(),
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(2101),
-                    );
-                    if (pickedDate != null) {
-                      _dateController.text = pickedDate.toIso8601String().split(
-                        'T',
-                      )[0];
-                    }
-                  },
-                ),
-                Autocomplete<String>(
-                  initialValue: TextEditingValue(
-                    text: _categoryController.text,
-                  ),
-                  optionsBuilder: (TextEditingValue textEditingValue) {
-                    if (textEditingValue.text == '') {
-                      return const Iterable<String>.empty();
-                    }
-                    return _allCategories.where((String option) {
-                      return option.toLowerCase().contains(
-                        textEditingValue.text.toLowerCase(),
+            // --- THIS IS THE FIX: Wrap content in a Form ---
+            child: Form(
+              key: _expenseFormKey, // Assign the key
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: _dateController,
+                    decoration: const InputDecoration(
+                      labelText: 'Date',
+                      suffixIcon: Icon(Icons.calendar_today),
+                    ),
+                    readOnly: true,
+                    onTap: () async {
+                      DateTime? pickedDate = await showDatePicker(
+                        context: context,
+                        initialDate:
+                            DateTime.tryParse(_dateController.text) ??
+                            DateTime.now(),
+                        firstDate: DateTime(2000),
+                        lastDate: DateTime(2101),
                       );
-                    });
-                  },
-                  onSelected: (String selection) {
-                    _categoryController.text = selection;
-                  },
-                  fieldViewBuilder:
-                      (
-                        BuildContext context,
-                        TextEditingController fieldController,
-                        FocusNode fieldFocusNode,
-                        VoidCallback onFieldSubmitted,
-                      ) {
-                        _categoryController.text = fieldController.text;
-                        fieldController.addListener(() {
-                          _categoryController.text = fieldController.text;
-                        });
-
-                        return TextFormField(
-                          controller: fieldController,
-                          focusNode: fieldFocusNode,
-                          decoration: const InputDecoration(
-                            labelText: 'Category (e.g., Fuel, Insurance)',
-                          ),
+                      if (pickedDate != null) {
+                        _dateController.text = pickedDate
+                            .toIso8601String()
+                            .split('T')[0];
+                      }
+                    },
+                  ),
+                  Autocomplete<String>(
+                    initialValue: TextEditingValue(
+                      text: _categoryController.text,
+                    ),
+                    optionsBuilder: (TextEditingValue textEditingValue) {
+                      if (textEditingValue.text == '') {
+                        return const Iterable<String>.empty();
+                      }
+                      return _allCategories.where((String option) {
+                        return option.toLowerCase().contains(
+                          textEditingValue.text.toLowerCase(),
                         );
-                      },
-                  optionsViewBuilder:
-                      (
-                        BuildContext context,
-                        AutocompleteOnSelected<String> onSelected,
-                        Iterable<String> options,
-                      ) {
-                        return Align(
-                          alignment: Alignment.topLeft,
-                          child: Material(
-                            elevation: 4.0,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxHeight: 200),
-                              child: ListView.builder(
-                                padding: EdgeInsets.zero,
-                                shrinkWrap: true,
-                                itemCount: options.length,
-                                itemBuilder: (BuildContext context, int index) {
-                                  final String option = options.elementAt(
-                                    index,
-                                  );
-                                  return InkWell(
-                                    onTap: () {
-                                      onSelected(option);
-                                    },
-                                    child: ListTile(title: Text(option)),
-                                  );
-                                },
+                      });
+                    },
+                    onSelected: (String selection) {
+                      _categoryController.text = selection;
+                    },
+                    fieldViewBuilder:
+                        (
+                          BuildContext context,
+                          TextEditingController fieldController,
+                          FocusNode fieldFocusNode,
+                          VoidCallback onFieldSubmitted,
+                        ) {
+                          _categoryController.text = fieldController.text;
+                          fieldController.addListener(() {
+                            _categoryController.text = fieldController.text;
+                          });
+
+                          return TextFormField(
+                            controller: fieldController,
+                            focusNode: fieldFocusNode,
+                            decoration: const InputDecoration(
+                              labelText: 'Category (e.g., Fuel, Insurance)',
+                            ),
+                            // --- THIS IS THE FIX: Add validator ---
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Please enter a category';
+                              }
+                              return null;
+                            },
+                          );
+                        },
+                    optionsViewBuilder:
+                        (
+                          BuildContext context,
+                          AutocompleteOnSelected<String> onSelected,
+                          Iterable<String> options,
+                        ) {
+                          return Align(
+                            alignment: Alignment.topLeft,
+                            child: Material(
+                              elevation: 4.0,
+                              child: ConstrainedBox(
+                                constraints: const BoxConstraints(
+                                  maxHeight: 200,
+                                ),
+                                child: ListView.builder(
+                                  padding: EdgeInsets.zero,
+                                  shrinkWrap: true,
+                                  itemCount: options.length,
+                                  itemBuilder:
+                                      (BuildContext context, int index) {
+                                        final String option = options.elementAt(
+                                          index,
+                                        );
+                                        return InkWell(
+                                          onTap: () {
+                                            onSelected(option);
+                                          },
+                                          child: ListTile(title: Text(option)),
+                                        );
+                                      },
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                ),
-                TextFormField(
-                  controller: _amountController,
-                  decoration: InputDecoration(
-                    labelText: 'Amount',
-                    prefixText: settings.currencySymbol,
+                          );
+                        },
                   ),
-                  keyboardType: const TextInputType.numberWithOptions(
-                    decimal: true,
+                  TextFormField(
+                    controller: _amountController,
+                    decoration: InputDecoration(
+                      labelText: 'Amount',
+                      prefixText: settings.currencySymbol,
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    // --- THIS IS THE FIX: Add validator ---
+                    validator: (value) {
+                      if (value == null || value.isEmpty) {
+                        return 'Please enter an amount';
+                      }
+                      if (double.tryParse(value) == null) {
+                        return 'Please enter a valid number';
+                      }
+                      return null;
+                    },
                   ),
-                ),
-                TextFormField(
-                  controller: _notesController,
-                  decoration: const InputDecoration(labelText: 'Notes'),
-                ),
-              ],
+                  TextFormField(
+                    controller: _notesController,
+                    decoration: const InputDecoration(labelText: 'Notes'),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -206,8 +232,11 @@ class _ExpensesTabState extends State<ExpensesTab> {
             ),
             ElevatedButton(
               onPressed: () {
-                _saveExpense(expense);
-                Navigator.of(context).pop();
+                // --- THIS IS THE FIX: Check form validity ---
+                if (_expenseFormKey.currentState!.validate()) {
+                  _saveExpense(expense);
+                  Navigator.of(context).pop();
+                }
               },
               child: const Text('Save'),
             ),
@@ -244,6 +273,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
         title: const Text('Delete Expense?'),
         content: const Text(
           'Are you sure you want to permanently delete this expense?',
+          style: TextStyle(color: Colors.black),
         ),
         actions: [
           TextButton(
@@ -251,7 +281,10 @@ class _ExpensesTabState extends State<ExpensesTab> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.redAccent,
+              foregroundColor: Colors.black,
+            ),
             onPressed: () async {
               await dbHelper.deleteExpense(id);
               Navigator.of(ctx).pop();
@@ -268,94 +301,169 @@ class _ExpensesTabState extends State<ExpensesTab> {
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
 
+    // (Grouping logic is unchanged)
+    final Map<String, List<Map<String, dynamic>>> groupedExpenses = {};
+    if (_currentGrouping == ExpenseGrouping.byDate) {
+      for (var expense in _expenses) {
+        final String monthYear = expense[DatabaseHelper.columnServiceDate]
+            .substring(0, 7);
+        if (groupedExpenses[monthYear] == null) {
+          groupedExpenses[monthYear] = [];
+        }
+        groupedExpenses[monthYear]!.add(expense);
+      }
+    } else {
+      for (var expense in _expenses) {
+        final String category =
+            expense[DatabaseHelper.columnCategory] ?? 'Uncategorized';
+        if (groupedExpenses[category] == null) {
+          groupedExpenses[category] = [];
+        }
+        groupedExpenses[category]!.add(expense);
+      }
+    }
+    final sortedGroups = groupedExpenses.keys.toList();
+
     return Scaffold(
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _expenses.isEmpty
-          ? const Center(
-              child: Text(
-                'No expenses found. \nTap the "+" button to add one!',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-                textAlign: TextAlign.center,
-              ),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 80),
-              itemCount: _expenses.length,
-              itemBuilder: (context, index) {
-                final expense = _expenses[index];
-
-                // --- THIS IS THE NEW LOGIC ---
-                final String? notes = expense[DatabaseHelper.columnNotes];
-                final String date = expense[DatabaseHelper.columnServiceDate];
-
-                // Create the subtitle text
-                String subtitleText = 'Date: $date';
-                if (notes != null && notes.isNotEmpty) {
-                  subtitleText += ' ($notes)'; // Add notes in parentheses
-                }
-                // --- END OF NEW LOGIC ---
-
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  elevation: 2,
-                  child: ListTile(
-                    leading: Icon(
-                      _getIconForCategory(
-                        expense[DatabaseHelper.columnCategory],
+          : Column(
+              children: [
+                // (Toggle button is unchanged)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: SegmentedButton<ExpenseGrouping>(
+                    segments: const [
+                      ButtonSegment(
+                        value: ExpenseGrouping.byDate,
+                        label: Text('By Date'),
+                        icon: Icon(Icons.calendar_month),
                       ),
-                      color: Colors.green[700],
-                      size: 36,
-                    ),
-
-                    title: Text(
-                      expense[DatabaseHelper.columnCategory] ?? 'Expense',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                      ButtonSegment(
+                        value: ExpenseGrouping.byCategory,
+                        label: Text('By Category'),
+                        icon: Icon(Icons.label),
                       ),
-                    ),
-
-                    // --- THIS IS THE NEW SUBTITLE ---
-                    subtitle: Text(
-                      subtitleText,
-                      style: TextStyle(fontSize: 14, color: Colors.grey[800]),
-                      maxLines: 1, // Will truncate with "..."
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    isThreeLine: false, // We only have two lines now
-                    // --- END OF NEW SUBTITLE ---
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min, // Keep row compact
-                      children: [
-                        Text(
-                          '${settings.currencySymbol}${expense[DatabaseHelper.columnTotalCost] ?? '0.00'}',
-                          style: TextStyle(
-                            color: Colors.green[700],
-                            fontWeight: FontWeight.bold,
-                            fontSize: 15,
-                          ),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.chevron_right, color: Colors.grey[400]),
-                      ],
-                    ),
-
-                    onTap: () {
-                      _showAddExpenseDialog(settings, expense: expense);
+                    ],
+                    selected: {_currentGrouping},
+                    onSelectionChanged: (Set<ExpenseGrouping> newSelection) {
+                      setState(() {
+                        _currentGrouping = newSelection.first;
+                      });
                     },
                   ),
-                );
-              },
+                ),
+
+                Expanded(
+                  child: _expenses.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'No expenses found. \nTap the "+" button to add one!',
+                            style: TextStyle(fontSize: 16, color: Colors.grey),
+                            textAlign: TextAlign.center,
+                          ),
+                        )
+                      : ListView.builder(
+                          padding: const EdgeInsets.only(bottom: 80),
+                          itemCount: sortedGroups.length,
+                          itemBuilder: (context, index) {
+                            final groupName = sortedGroups[index];
+                            final expensesForGroup =
+                                groupedExpenses[groupName]!;
+
+                            return Card(
+                              margin: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              elevation: 2,
+                              clipBehavior: Clip.antiAlias,
+                              child: ExpansionTile(
+                                shape: const Border(),
+                                collapsedShape: const Border(),
+                                title: Text(
+                                  _currentGrouping == ExpenseGrouping.byDate
+                                      ? _formatMonthHeader(groupName)
+                                      : groupName,
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                    color: Theme.of(context).primaryColor,
+                                  ),
+                                ),
+                                initiallyExpanded: false,
+                                children: expensesForGroup.map((expense) {
+                                  return _buildExpenseCard(expense, settings);
+                                }).toList(),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
           _showAddExpenseDialog(settings, expense: null);
         },
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  // (This widget builds the individual expense card - unchanged)
+  Widget _buildExpenseCard(
+    Map<String, dynamic> expense,
+    SettingsProvider settings,
+  ) {
+    final String? notes = expense[DatabaseHelper.columnNotes];
+    final String date = expense[DatabaseHelper.columnServiceDate];
+    String subtitleText = 'Date: $date';
+    if (notes != null && notes.isNotEmpty) {
+      subtitleText += ' ($notes)';
+    }
+
+    return InkWell(
+      onTap: () {
+        _showAddExpenseDialog(settings, expense: expense);
+      },
+      child: Container(
+        decoration: BoxDecoration(
+          border: Border(top: BorderSide(color: Colors.grey[200]!)),
+        ),
+        child: ListTile(
+          leading: Icon(
+            _getIconForCategory(expense[DatabaseHelper.columnCategory]),
+            color: Colors.green[700],
+            size: 36,
+          ),
+          title: Text(
+            expense[DatabaseHelper.columnCategory] ?? 'Expense',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          subtitle: Text(
+            subtitleText,
+            style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          isThreeLine: false,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${settings.currencySymbol}${expense[DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                style: TextStyle(
+                  color: Colors.green[700],
+                  fontWeight: FontWeight.bold,
+                  fontSize: 15,
+                ),
+              ),
+              const SizedBox(width: 4),
+              Icon(Icons.chevron_right, color: Colors.grey[400]),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -494,8 +602,35 @@ class _ExpensesTabState extends State<ExpensesTab> {
         catLower.contains('mechanic')) {
       return Icons.garage;
     }
-    return Icons.monetization_on; // Default
+    return Icons.monetization_on;
   }
 
-  // --- WE NO LONGER NEED THE _buildIconRow HELPER ---
+  // (Helper to format "2025-11" - unchanged)
+  String _formatMonthHeader(String monthYear) {
+    try {
+      final parts = monthYear.split('-');
+      final year = int.parse(parts[0]);
+      final month = int.parse(parts[1]);
+      final date = DateTime(year, month);
+
+      const monthNames = [
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
+      ];
+
+      return '${monthNames[date.month - 1]} $year';
+    } catch (e) {
+      return monthYear;
+    }
+  }
 }

@@ -37,7 +37,7 @@ class _StatsPieChartState extends State<StatsPieChart> {
     );
 
     return AspectRatio(
-      aspectRatio: 1.3,
+      aspectRatio: 1.2,
       child: Card(
         elevation: 0,
         color: Colors.white,

@@ -1,22 +1,22 @@
 import 'package:flutter/material.dart';
-import '../service/database_helper.dart';
-import 'overview_tab.dart';
+import 'package:provider/provider.dart';
+import '../service/database_helper.dart'; // Make sure this path is correct
+import '../service/settings_provider.dart'; // Make sure this path is correct
+import 'overview_tab.dart'; // Make sure all your tabs are imported
 import 'service_history_tab.dart';
 import 'upcoming_reminders_tab.dart';
-import 'expenses_tab.dart';
 import 'stats_tab.dart';
+import 'expenses_tab.dart';
 import 'vehicle_settings_tab.dart';
 
 class VehicleDetailScreen extends StatefulWidget {
-  final int vehicleId; // We will pass this ID from the list screen
-
+  final int vehicleId;
   const VehicleDetailScreen({super.key, required this.vehicleId});
 
   @override
   State<VehicleDetailScreen> createState() => _VehicleDetailScreenState();
 }
 
-// Add "with TickerProviderStateMixin" for the TabController animation
 class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     with TickerProviderStateMixin {
   final dbHelper = DatabaseHelper.instance;
@@ -25,10 +25,14 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   Map<String, dynamic>? _vehicle;
   bool _isLoading = true;
 
+  // We need to fetch the odometer here to pass it to the service screen
+  // ignore: unused_field
+  int _currentOdometer = 0;
+
   @override
   void initState() {
     super.initState();
-    // Initialize the TabController with 5 tabs
+    // --- UPDATED: We now have 6 tabs ---
     _tabController = TabController(length: 6, vsync: this);
     _loadVehicleDetails();
   }
@@ -37,19 +41,25 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     final vehicleData = await dbHelper.queryVehicleById(widget.vehicleId);
     setState(() {
       _vehicle = vehicleData;
+      if (vehicleData != null) {
+        _currentOdometer =
+            vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0;
+      }
       _isLoading = false;
     });
   }
 
   @override
   void dispose() {
-    _tabController.dispose(); // Always dispose of controllers
+    _tabController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
-    // Show a loading screen until the vehicle data is fetched
+    // ignore: unused_local_variable
+    final settings = Provider.of<SettingsProvider>(context);
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Loading...')),
@@ -57,7 +67,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
       );
     }
 
-    // Get the vehicle's name for the title
     String vehicleName = "Vehicle Detail";
     if (_vehicle != null) {
       vehicleName =
@@ -67,27 +76,41 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(vehicleName),
-        // This is where the TabBar goes
+
+        // --- THIS IS THE REDESIGNED TABBAR ---
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: true, // Allows tabs to scroll if they don't fit
+          isScrollable: true, // Keep it scrollable for 6 items
+          // --- NEW PROPERTIES ---
+          indicatorWeight: 4.0, // Make the line thicker
+          unselectedLabelColor: Colors.black54, // Fades out inactive tabs
+          labelStyle: const TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 15,
+          ),
+          tabAlignment: TabAlignment.start, // Aligns tabs to the start
+          padding: const EdgeInsets.symmetric(
+            horizontal: 8.0,
+          ), // Reduces the side margin
+          labelPadding: const EdgeInsets.symmetric(
+            horizontal: 16.0,
+          ), // Space between tabs
+          // --- END OF NEW PROPERTIES ---
           tabs: const [
             Tab(text: 'Overview'),
-            Tab(text: 'Service History'),
+            Tab(text: 'History'), // Shortened from "Service History"
             Tab(text: 'Upcoming'),
             Tab(text: 'Stats'),
             Tab(text: 'Expenses'),
             Tab(text: 'Settings'),
           ],
         ),
+        // --- END OF REDESIGN ---
       ),
-      // This TabBarView holds the content for each tab
       body: TabBarView(
         controller: _tabController,
         children: [
-          // This is our new, real tab
-          OverviewTab(vehicleId: widget.vehicleId), // <-- REPLACED
-          // The rest are still placeholders
+          OverviewTab(vehicleId: widget.vehicleId),
           ServiceHistoryTab(vehicleId: widget.vehicleId),
           UpcomingRemindersTab(vehicleId: widget.vehicleId),
           StatsTab(vehicleId: widget.vehicleId),
@@ -95,7 +118,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           _vehicle == null
               ? const Center(child: Text('Error: Vehicle data not found.'))
               : VehicleSettingsTab(
-                  vehicle: _vehicle!, // This is now safe
+                  vehicle: _vehicle!,
                   onVehicleUpdated: _loadVehicleDetails,
                 ),
         ],

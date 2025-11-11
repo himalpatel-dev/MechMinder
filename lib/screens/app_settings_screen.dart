@@ -5,7 +5,6 @@ import '../service/database_helper.dart';
 import 'package:path_provider/path_provider.dart'; // To find the temp folder
 import 'package:share_plus/share_plus.dart'; // To open the share dialog
 import 'package:file_picker/file_picker.dart';
-import 'package:workmanager/workmanager.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
 

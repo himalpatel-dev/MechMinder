@@ -84,7 +84,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Vehicle Manager',
+      title: 'MechMinder – Never Miss a Service Again',
       theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
       debugShowCheckedModeBanner: false,
       home: const VehicleListScreen(),
