@@ -241,7 +241,7 @@ class _OverviewTabState extends State<OverviewTab> {
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                 ),
-                Container(
+                SizedBox(
                   height: 120,
                   child: _vehiclePhotos.isEmpty
                       ? const Center(child: Text('No photos added yet.'))

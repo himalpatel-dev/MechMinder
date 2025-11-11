@@ -333,8 +333,8 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
               },
             ),
       floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.add),
         onPressed: _navigateToAddVehicle,
+        child: const Icon(Icons.add),
       ),
     );
   }
