@@ -7,10 +7,10 @@ class VendorListScreen extends StatefulWidget {
   const VendorListScreen({super.key});
 
   @override
-  State<VendorListScreen> createState() => _VendorListScreenState();
+  State<VendorListScreen> createState() => VendorListScreenState();
 }
 
-class _VendorListScreenState extends State<VendorListScreen> {
+class VendorListScreenState extends State<VendorListScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _vendors = [];
 
@@ -22,10 +22,10 @@ class _VendorListScreenState extends State<VendorListScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshVendorList();
+    refreshVendorList();
   }
 
-  Future<void> _refreshVendorList() async {
+  Future<void> refreshVendorList() async {
     final allVendors = await dbHelper.queryAllVendors();
     setState(() {
       _vendors = allVendors;
@@ -33,7 +33,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
   }
 
   // (This function is unchanged)
-  void _showAddEditVendorDialog({Map<String, dynamic>? vendor}) {
+  void showAddEditVendorDialog({Map<String, dynamic>? vendor}) {
     bool isEditing = vendor != null;
 
     if (isEditing) {
@@ -50,13 +50,13 @@ class _VendorListScreenState extends State<VendorListScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(isEditing ? 'Edit Service Station' : 'Add New Service Station'),
+          title: Text(isEditing ? 'Edit Workshop' : 'Add New Workshop'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Service Station Name'),
+                decoration: const InputDecoration(labelText: 'Workshop Name'),
                 autofocus: true,
               ),
               TextField(
@@ -116,7 +116,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
       await dbHelper.insertVendor(row);
     }
 
-    _refreshVendorList();
+    refreshVendorList();
   }
 
   // (This function is unchanged)
@@ -124,9 +124,9 @@ class _VendorListScreenState extends State<VendorListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Service Station?'),
+        title: const Text('Delete Workshop?'),
         content: const Text(
-          'Are you sure you want to permanently delete this Service Station? This cannot be undone.',
+          'Are you sure you want to permanently delete this Workshop? This cannot be undone.',
           // style: ... (removed)
         ),
         actions: [
@@ -142,7 +142,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
             onPressed: () async {
               await dbHelper.deleteVendor(id);
               Navigator.of(ctx).pop();
-              _refreshVendorList();
+              refreshVendorList();
             },
             child: const Text('Delete'),
           ),
@@ -158,11 +158,9 @@ class _VendorListScreenState extends State<VendorListScreen> {
     final settings = Provider.of<SettingsProvider>(context);
     // --- END OF FIX ---
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Service Stations')),
-      body: _vendors.isEmpty
+    return _vendors.isEmpty
           ? const Center(
-              child: Text('No Service Station added yet. Tap "+" to add one.'),
+              child: Text('No Workshop added yet. Tap "+" to add one.'),
             )
           : ListView.builder(
               padding: const EdgeInsets.only(bottom: 80),
@@ -200,18 +198,11 @@ class _VendorListScreenState extends State<VendorListScreen> {
                       color: Colors.grey[400],
                     ),
                     onTap: () {
-                      _showAddEditVendorDialog(vendor: vendor);
+                      showAddEditVendorDialog(vendor: vendor);
                     },
                   ),
                 );
               },
-            ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showAddEditVendorDialog(vendor: null);
-        },
-        child: const Icon(Icons.add),
-      ),
-    );
+            );
   }
 }

@@ -366,9 +366,7 @@ class AppSettingsScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<SettingsProvider>(
       builder: (context, settings, child) {
-        return Scaffold(
-          appBar: AppBar(title: const Text('App Settings')),
-          body: ListView(
+        return ListView(
             children: [
               // --- DATA MANAGEMENT (unchanged) ---
               const ListTile(
@@ -449,8 +447,7 @@ class AppSettingsScreen extends StatelessWidget {
                 },
               ),
             ],
-          ),
-        );
+          );
       },
     );
   }

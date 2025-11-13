@@ -199,7 +199,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                   _buildDetailTile(
                     icon: Icons.store,
-                    title: 'Service Station',
+                    title: 'Workshop',
                     subtitle: _service!['vendor_name'] ?? 'N/A',
                     primaryColor: myAppColor,
                   ),

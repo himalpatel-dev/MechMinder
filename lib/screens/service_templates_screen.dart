@@ -8,10 +8,10 @@ class ServiceTemplatesScreen extends StatefulWidget {
   const ServiceTemplatesScreen({super.key});
 
   @override
-  State<ServiceTemplatesScreen> createState() => _ServiceTemplatesScreenState();
+  State<ServiceTemplatesScreen> createState() => ServiceTemplatesScreenState();
 }
 
-class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
+class ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _templates = [];
 
@@ -23,10 +23,10 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshTemplateList();
+    refreshTemplateList();
   }
 
-  Future<void> _refreshTemplateList() async {
+  Future<void> refreshTemplateList() async {
     final allTemplates = await dbHelper.queryAllServiceTemplates();
     setState(() {
       _templates = allTemplates;
@@ -34,7 +34,7 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
   }
 
   // (This function is unchanged)
-  void _showAddEditTemplateDialog({Map<String, dynamic>? template}) {
+  void showAddEditTemplateDialog({Map<String, dynamic>? template}) {
     bool isEditing = template != null;
 
     if (isEditing) {
@@ -53,13 +53,13 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(isEditing ? 'Edit Template' : 'Add New Template'),
+          title: Text(isEditing ? 'Edit AutoSet' : 'Add New AutoSet'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Template Name'),
+                decoration: const InputDecoration(labelText: 'AutoSet Name'),
                 autofocus: true,
               ),
               TextField(
@@ -123,7 +123,7 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
       await dbHelper.insertServiceTemplate(row);
     }
 
-    _refreshTemplateList();
+    refreshTemplateList();
   }
 
   // (This function is unchanged)
@@ -131,9 +131,9 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Template?'),
+        title: const Text('Delete AutoSet?'),
         content: const Text(
-          'Are you sure you want to permanently delete this template? This will not affect existing reminders.',
+          'Are you sure you want to permanently delete this AutoSet? This will not affect existing reminders.',
         ),
         actions: [
           TextButton(
@@ -148,7 +148,7 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
             onPressed: () async {
               await dbHelper.deleteServiceTemplate(id);
               Navigator.of(ctx).pop();
-              _refreshTemplateList();
+              refreshTemplateList();
             },
             child: const Text('Delete'),
           ),
@@ -164,10 +164,8 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     final settings = Provider.of<SettingsProvider>(context);
     // --- END OF FIX ---
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('Manage Service Templates')),
-      body: _templates.isEmpty
-          ? const Center(child: Text('No templates found. Tap "+" to add one.'))
+    return _templates.isEmpty
+          ? const Center(child: Text('No AutoSet found. Tap "+" to add one.'))
           : ListView.builder(
               padding: const EdgeInsets.only(bottom: 80),
               itemCount: _templates.length,
@@ -204,18 +202,11 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
                       color: Colors.grey[400],
                     ),
                     onTap: () {
-                      _showAddEditTemplateDialog(template: template);
+                      showAddEditTemplateDialog(template: template);
                     },
                   ),
                 );
               },
-            ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showAddEditTemplateDialog(template: null);
-        },
-        child: const Icon(Icons.add),
-      ),
-    );
+            );
   }
 }

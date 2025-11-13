@@ -579,7 +579,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                                 Expanded(
                                   child: DropdownButtonFormField<int>(
                                     value: _selectedTemplateId,
-                                    hint: const Text('Add part from template'),
+                                    hint: const Text('Add part from AutoSet'),
                                     decoration: InputDecoration(
                                       border: fieldBorder,
                                       filled: true,
@@ -612,7 +612,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                                     color: Colors.green,
                                     size: 30,
                                   ),
-                                  tooltip: 'Add selected template',
+                                  tooltip: 'Add selected AutoSet',
                                   onPressed: _addPartFromTemplate,
                                 ),
                               ],
@@ -673,16 +673,16 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
 
                   // --- CARD 3: VENDOR & NOTES ---
                   _buildSectionCard(
-                    title: 'Service Station & Notes',
+                    title: 'Workshop & Notes',
                     children: [
                       _isLoadingVendors
                           ? const Center(child: CircularProgressIndicator())
                           : DropdownButtonFormField<int>(
                               value: _selectedVendorId,
-                              hint: const Text('Select Service Station'),
+                              hint: const Text('Select Workshop'),
                               decoration: InputDecoration(
                                 // <-- Use new style
-                                labelText: 'Service Station',
+                                labelText: 'Workshop',
                                 prefixIcon: Icon(
                                   Icons.store,
                                   color: settings.primaryColor,

@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
-import '../service/database_helper.dart';
-import 'add_vehicle.dart';
-import 'vehicle_detail.dart';
-import 'vendor_list_screen.dart';
-import 'service_templates_screen.dart';
-import 'app_settings_screen.dart';
+import '../service/database_helper.dart'; 
+import 'vehicle_detail.dart'; 
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
 import 'dart:io';
@@ -15,10 +11,10 @@ class VehicleListScreen extends StatefulWidget {
   const VehicleListScreen({super.key});
 
   @override
-  State<VehicleListScreen> createState() => _VehicleListScreenState();
+  State<VehicleListScreen> createState() => VehicleListScreenState();
 }
 
-class _VehicleListScreenState extends State<VehicleListScreen> {
+class VehicleListScreenState extends State<VehicleListScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _vehicles = [];
   bool _isLoading = true;
@@ -26,10 +22,10 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshVehicleList();
+    refreshVehicleList();
   }
 
-  Future<void> _refreshVehicleList() async {
+  void refreshVehicleList() async {
     // (This function is unchanged)
     setState(() { _isLoading = true; });
     final allVehicles = await dbHelper.queryAllVehiclesWithNextReminder();
@@ -54,100 +50,21 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
     });
   }
 
-  void _navigateToAddVehicle() {
-    // (This function is unchanged)
-    Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const AddVehicleScreen()),
-    ).then((_) {
-      _refreshVehicleList();
-    });
-  }
-
-  // --- NEW: This function handles the "More" menu clicks ---
-  void _onMenuSelected(String value) {
-    switch (value) {
-      case 'vendors':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const VendorListScreen()),
-        );
-        break;
-      case 'templates':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ServiceTemplatesScreen()),
-        );
-        break;
-      case 'settings':
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const AppSettingsScreen()),
-        ).then((result) {
-          if (result == true) {
-            _refreshVehicleList();
-          }
-        });
-        break;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('My Vehicles'),
-        
-        // --- THIS IS THE NEW "MORE" MENU ---
-        actions: [
-          PopupMenuButton<String>(
-            onSelected: _onMenuSelected,
-            icon: const Icon(Icons.more_vert), // The 3-dot icon
-            itemBuilder: (BuildContext context) => [
-              const PopupMenuItem<String>(
-                value: 'vendors',
-                child: ListTile(
-                  leading: Icon(Icons.store),
-                  title: Text('Manage Vendors'),
-                ),
-              ),
-              const PopupMenuItem<String>(
-                value: 'templates',
-                child: ListTile(
-                  leading: Icon(Icons.list_alt),
-                  title: Text('Manage Templates'),
-                ),
-              ),
-              const PopupMenuDivider(),
-              const PopupMenuItem<String>(
-                value: 'settings',
-                child: ListTile(
-                  leading: Icon(Icons.settings),
-                  title: Text('App Settings'),
-                ),
-              ),
-            ],
-          ),
-        ],
-        // --- END OF NEW MENU ---
-      ),
-      
-      // --- The drawer: is now REMOVED ---
-      
-      body: _isLoading
-          ? const Center(
-              // (Loading spinner is unchanged)
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 10),
-                  Text("Loading dashboard..."),
-                ],
-              ),
-            )
+    return _isLoading
+        ? const Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 10),
+                Text("Loading dashboard..."),
+              ],
+            ),
+          )
           : _vehicles.isEmpty
               ? const Center(
                   // (Empty list text is unchanged)
@@ -202,7 +119,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                                       builder: (context) => VehicleDetailScreen(vehicleId: vehicleId),
                                     ),
                                   ).then((_) {
-                                    _refreshVehicleList();
+                                    refreshVehicleList();
                                   });
                                 },
                                 child: Column(
@@ -320,12 +237,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
                       );
                     },
                   ),
-                ),
-      floatingActionButton: FloatingActionButton(
-        child: const Icon(Icons.add),
-        onPressed: _navigateToAddVehicle,
-      ),
-    );
+                );
   }
 
   // (This helper function is unchanged)

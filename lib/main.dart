@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:mechminder/screens/vehicle_list.dart';
-// --- 1. IMPORT YOUR DATABASE HELPER ---
+import 'screens/home_screen.dart';
 import 'package:mechminder/service/database_helper.dart';
 import 'package:mechminder/service/notification_service.dart';
 import 'package:workmanager/workmanager.dart';
-import 'package:provider/provider.dart'; // The package we just added
+import 'package:provider/provider.dart';  
 import 'service/settings_provider.dart';
 
 @pragma('vm:entry-point')
@@ -143,7 +142,7 @@ class MyApp extends StatelessWidget {
             ),
           ),
 
-          home: const VehicleListScreen(),
+          home: const HomeScreen(),
         );
       },
     );

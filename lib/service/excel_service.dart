@@ -48,7 +48,7 @@ class ExcelService {
         'Service Date',
         'Odometer (${settings.unitType})',
         'Service Name',
-        'Service Station',
+        'Workshop',
         'Part Name',
         'Qty',
         'Part Cost (${settings.currencySymbol})',
