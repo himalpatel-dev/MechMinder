@@ -673,16 +673,16 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
 
                   // --- CARD 3: VENDOR & NOTES ---
                   _buildSectionCard(
-                    title: 'Vendor & Notes',
+                    title: 'Service Station & Notes',
                     children: [
                       _isLoadingVendors
                           ? const Center(child: CircularProgressIndicator())
                           : DropdownButtonFormField<int>(
                               value: _selectedVendorId,
-                              hint: const Text('Select Vendor (Optional)'),
+                              hint: const Text('Select Service Station'),
                               decoration: InputDecoration(
                                 // <-- Use new style
-                                labelText: 'Vendor',
+                                labelText: 'Service Station',
                                 prefixIcon: Icon(
                                   Icons.store,
                                   color: settings.primaryColor,

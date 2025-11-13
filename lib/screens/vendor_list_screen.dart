@@ -50,13 +50,13 @@ class _VendorListScreenState extends State<VendorListScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(isEditing ? 'Edit Vendor' : 'Add New Vendor'),
+          title: Text(isEditing ? 'Edit Service Station' : 'Add New Service Station'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Vendor Name'),
+                decoration: const InputDecoration(labelText: 'Service Station Name'),
                 autofocus: true,
               ),
               TextField(
@@ -124,9 +124,9 @@ class _VendorListScreenState extends State<VendorListScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Vendor?'),
+        title: const Text('Delete Service Station?'),
         content: const Text(
-          'Are you sure you want to permanently delete this vendor? This cannot be undone.',
+          'Are you sure you want to permanently delete this Service Station? This cannot be undone.',
           // style: ... (removed)
         ),
         actions: [
@@ -159,10 +159,10 @@ class _VendorListScreenState extends State<VendorListScreen> {
     // --- END OF FIX ---
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Manage Vendors')),
+      appBar: AppBar(title: const Text('Service Stations')),
       body: _vendors.isEmpty
           ? const Center(
-              child: Text('No vendors added yet. Tap "+" to add one.'),
+              child: Text('No Service Station added yet. Tap "+" to add one.'),
             )
           : ListView.builder(
               padding: const EdgeInsets.only(bottom: 80),
@@ -194,8 +194,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
                     ),
                     subtitle: Text(
                       'Phone: ${vendor[DatabaseHelper.columnPhone] ?? 'N/A'}\nAddress: ${vendor[DatabaseHelper.columnAddress] ?? 'N/A'}',
-                    ),
-                    isThreeLine: true,
+                    ), 
                     trailing: Icon(
                       Icons.chevron_right,
                       color: Colors.grey[400],

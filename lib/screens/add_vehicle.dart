@@ -234,7 +234,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                             // --- THIS IS THE FIX ---
                             // We will manually fill the box with a gray color
                             // when in edit mode to make it look disabled.
-                            filled: _isEditMode,
+                            filled: _isEditMode?true:false,
                             // We set the fill color. If we're in edit mode, we use
                             // the theme's 'disabledColor' with a little transparency.
                             // This will be light gray in Light Mode and dark gray in Dark Mode.
