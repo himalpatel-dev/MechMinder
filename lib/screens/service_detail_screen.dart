@@ -80,7 +80,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           title: const Text('Delete Service?'),
           content: const Text(
             'Are you sure you want to permanently delete this service record? All its parts and photos will be lost.',
-            style: TextStyle(color: Colors.black),
+            // style: TextStyle(color: Colors.black),
           ),
           actions: [
             TextButton(
@@ -126,7 +126,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
-
+    final Color myAppColor = settings.primaryColor;
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Loading...')),
@@ -188,17 +188,20 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     icon: Icons.calendar_today,
                     title: 'Date',
                     subtitle: _service![DatabaseHelper.columnServiceDate],
+                    primaryColor: myAppColor,
                   ),
                   _buildDetailTile(
                     icon: Icons.speed,
                     title: 'Odometer',
                     subtitle:
                         '${_service![DatabaseHelper.columnOdometer]} ${settings.unitType}',
+                    primaryColor: myAppColor,
                   ),
                   _buildDetailTile(
                     icon: Icons.store,
                     title: 'Vendor',
                     subtitle: _service!['vendor_name'] ?? 'N/A',
+                    primaryColor: myAppColor,
                   ),
                   _buildDetailTile(
                     icon: Icons.attach_money,
@@ -206,12 +209,14 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     subtitle:
                         '${settings.currencySymbol}${_service![DatabaseHelper.columnTotalCost] ?? '0.00'}',
                     isGreen: true,
+                    primaryColor: myAppColor,
                   ),
                   _buildDetailTile(
                     icon: Icons.notes,
                     title: 'Notes',
                     subtitle: _service![DatabaseHelper.columnNotes] ?? 'N/A',
                     isThreeLine: true,
+                    primaryColor: myAppColor,
                   ),
                 ],
               ),
@@ -231,7 +236,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: Theme.of(context).primaryColor,
+                        // color: Theme.of(context).primaryColor,
                       ),
                     ),
                     const Divider(height: 20),
@@ -371,11 +376,12 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     required IconData icon,
     required String title,
     required String subtitle,
+    required Color primaryColor,
     bool isGreen = false,
     bool isThreeLine = false,
   }) {
     return ListTile(
-      leading: Icon(icon, color: Theme.of(context).primaryColor),
+      leading: Icon(icon, color: primaryColor),
       title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
       subtitle: Text(
         subtitle,
@@ -406,7 +412,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
-                color: Theme.of(context).primaryColor,
+                // color: Theme.of(context).primaryColor,
               ),
             ),
             const Divider(height: 20),

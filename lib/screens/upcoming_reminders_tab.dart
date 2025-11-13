@@ -155,7 +155,7 @@ class _UpcomingRemindersTabState extends State<UpcomingRemindersTab> {
             TextField(
               controller: _manualNameController,
               decoration: const InputDecoration(
-                labelText: 'Reminder Name (e.g., Wash Car)',
+                labelText: 'Reminder Name (e.g., Car Wash)',
               ),
               autofocus: true,
             ),
@@ -176,9 +176,12 @@ class _UpcomingRemindersTabState extends State<UpcomingRemindersTab> {
               child: AbsorbPointer(
                 child: TextField(
                   controller: _manualDateController,
-                  decoration: const InputDecoration(
+                  decoration: InputDecoration(
                     labelText: 'Due Date (Optional)',
-                    suffixIcon: Icon(Icons.calendar_today),
+                    suffixIcon: Icon(
+                      Icons.calendar_today,
+                      color: settings.primaryColor,
+                    ),
                   ),
                 ),
               ),

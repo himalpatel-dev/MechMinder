@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
+import 'package:provider/provider.dart'; // --- THIS IS THE FIX ---
+import '../service/settings_provider.dart'; // --- THIS IS THE FIX ---
 
 class VendorListScreen extends StatefulWidget {
   const VendorListScreen({super.key});
@@ -12,7 +14,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _vendors = [];
 
-  // Controllers for the Add/Edit dialog
+  // (Controllers are unchanged)
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
@@ -30,19 +32,15 @@ class _VendorListScreenState extends State<VendorListScreen> {
     });
   }
 
-  // --- THIS FUNCTION IS NOW UPGRADED ---
-  // It can now handle both ADDING (vendor == null)
-  // and EDITING (vendor != null)
+  // (This function is unchanged)
   void _showAddEditVendorDialog({Map<String, dynamic>? vendor}) {
     bool isEditing = vendor != null;
 
     if (isEditing) {
-      // Pre-fill controllers for editing
       _nameController.text = vendor[DatabaseHelper.columnName] ?? '';
       _phoneController.text = vendor[DatabaseHelper.columnPhone] ?? '';
       _addressController.text = vendor[DatabaseHelper.columnAddress] ?? '';
     } else {
-      // Clear for adding
       _nameController.text = '';
       _phoneController.text = '';
       _addressController.text = '';
@@ -73,11 +71,10 @@ class _VendorListScreenState extends State<VendorListScreen> {
             ],
           ),
           actions: [
-            // --- ADD DELETE BUTTON (only for editing) ---
             if (isEditing)
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pop(); // Close the edit dialog
+                  Navigator.of(context).pop();
                   _showDeleteConfirmation(vendor[DatabaseHelper.columnId]);
                 },
                 child: const Text(
@@ -85,14 +82,14 @@ class _VendorListScreenState extends State<VendorListScreen> {
                   style: TextStyle(color: Colors.red),
                 ),
               ),
-            const Spacer(), // Pushes buttons to the right
+            const Spacer(),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
-                _saveVendor(vendor); // Pass the vendor to save
+                _saveVendor(vendor);
                 Navigator.of(context).pop();
               },
               child: const Text('Save'),
@@ -103,10 +100,9 @@ class _VendorListScreenState extends State<VendorListScreen> {
     );
   }
 
-  // --- THIS FUNCTION IS ALSO UPGRADED ---
+  // (This function is unchanged)
   void _saveVendor(Map<String, dynamic>? vendor) async {
     bool isEditing = vendor != null;
-
     Map<String, dynamic> row = {
       DatabaseHelper.columnName: _nameController.text,
       DatabaseHelper.columnPhone: _phoneController.text,
@@ -120,10 +116,10 @@ class _VendorListScreenState extends State<VendorListScreen> {
       await dbHelper.insertVendor(row);
     }
 
-    _refreshVendorList(); // Refresh the list
+    _refreshVendorList();
   }
 
-  // --- NEW FUNCTION: DELETE CONFIRMATION ---
+  // (This function is unchanged)
   void _showDeleteConfirmation(int id) {
     showDialog(
       context: context,
@@ -131,6 +127,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
         title: const Text('Delete Vendor?'),
         content: const Text(
           'Are you sure you want to permanently delete this vendor? This cannot be undone.',
+          // style: ... (removed)
         ),
         actions: [
           TextButton(
@@ -139,13 +136,13 @@ class _VendorListScreenState extends State<VendorListScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.black,
+              backgroundColor: Colors.red,
+              // foregroundColor: ... (removed)
             ),
             onPressed: () async {
               await dbHelper.deleteVendor(id);
               Navigator.of(ctx).pop();
-              _refreshVendorList(); // Refresh the list
+              _refreshVendorList();
             },
             child: const Text('Delete'),
           ),
@@ -156,6 +153,11 @@ class _VendorListScreenState extends State<VendorListScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // --- THIS IS THE FIX ---
+    // Get the settings provider
+    final settings = Provider.of<SettingsProvider>(context);
+    // --- END OF FIX ---
+
     return Scaffold(
       appBar: AppBar(title: const Text('Manage Vendors')),
       body: _vendors.isEmpty
@@ -163,12 +165,11 @@ class _VendorListScreenState extends State<VendorListScreen> {
               child: Text('No vendors added yet. Tap "+" to add one.'),
             )
           : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 80), // For the button
+              padding: const EdgeInsets.only(bottom: 80),
               itemCount: _vendors.length,
               itemBuilder: (context, index) {
                 final vendor = _vendors[index];
 
-                // --- THIS IS THE NEW REDESIGNED TILE ---
                 return Card(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -176,11 +177,14 @@ class _VendorListScreenState extends State<VendorListScreen> {
                   ),
                   elevation: 2,
                   child: ListTile(
-                    leading: const Icon(
+                    // --- THIS IS THE FIX ---
+                    // Use the dynamic color from settings
+                    leading: Icon(
                       Icons.store,
-                      color: Colors.blue,
+                      color: settings.primaryColor,
                       size: 36,
                     ),
+                    // --- END OF FIX ---
                     title: Text(
                       vendor[DatabaseHelper.columnName],
                       style: const TextStyle(
@@ -197,17 +201,14 @@ class _VendorListScreenState extends State<VendorListScreen> {
                       color: Colors.grey[400],
                     ),
                     onTap: () {
-                      // This now opens the "Edit" dialog
                       _showAddEditVendorDialog(vendor: vendor);
                     },
                   ),
                 );
-                // --- END OF NEW TILE ---
               },
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // This now opens the "Add" dialog
           _showAddEditVendorDialog(vendor: null);
         },
         child: const Icon(Icons.add),

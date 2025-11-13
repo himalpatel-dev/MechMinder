@@ -71,7 +71,7 @@ class _StatsTabState extends State<StatsTab> {
                     style: TextStyle(
                       fontSize: 32,
                       fontWeight: FontWeight.bold,
-                      color: Theme.of(context).primaryColor,
+                      // color: Theme.of(context).primaryColor,
                     ),
                   ),
                 ],

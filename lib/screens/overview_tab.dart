@@ -18,8 +18,6 @@ class _OverviewTabState extends State<OverviewTab> {
   final dbHelper = DatabaseHelper.instance;
   final TextEditingController _odometerController = TextEditingController();
 
-  // ignore: unused_field
-  Map<String, dynamic>? _vehicle;
   Map<String, dynamic>? _nextDueDateReminder;
   Map<String, dynamic>? _nextOdometerReminder;
   List<Map<String, dynamic>> _vehiclePhotos = [];
@@ -41,17 +39,13 @@ class _OverviewTabState extends State<OverviewTab> {
         dbHelper.queryNextDueSummary(widget.vehicleId),
         dbHelper.queryPhotosForParent(widget.vehicleId, 'vehicle'),
       ]);
-
       final vehicleData = data[0] as Map<String, dynamic>?;
       final summary = data[1] as Map<String, Map<String, dynamic>?>;
       final photos = data[2] as List<Map<String, dynamic>>;
-
       if (vehicleData == null) {
         throw Exception("Vehicle data not found (ID: ${widget.vehicleId})");
       }
-
       setState(() {
-        _vehicle = vehicleData;
         _odometerController.text =
             (vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0).toString();
         _nextDueDateReminder = summary['nextByDate'];
@@ -74,9 +68,7 @@ class _OverviewTabState extends State<OverviewTab> {
     // (This function is unchanged)
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
-
     await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
-
     scaffoldMessenger.showSnackBar(
       const SnackBar(
         content: Text('Odometer updated!'),
@@ -86,12 +78,9 @@ class _OverviewTabState extends State<OverviewTab> {
     if (mounted) {
       FocusScope.of(context).unfocus();
     }
-
-    print("Checking odometer-based reminders...");
     final allReminders = await dbHelper.queryRemindersForVehicle(
       widget.vehicleId,
     );
-
     for (var reminder in allReminders) {
       final dueOdometer = reminder[DatabaseHelper.columnDueOdometer];
       if (dueOdometer != null && newOdometer >= dueOdometer) {
@@ -121,7 +110,7 @@ class _OverviewTabState extends State<OverviewTab> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
-
+    final Color myAppColor = settings.primaryColor;
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
@@ -151,18 +140,21 @@ class _OverviewTabState extends State<OverviewTab> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // --- THIS IS THE FIX ---
                   Row(
                     children: [
-                      Icon(Icons.speed, size: 14, color: Colors.grey[600]),
+                      // --- THIS IS THE FIX ---
+                      Icon(Icons.speed, size: 14, color: settings.primaryColor),
                       const SizedBox(width: 4),
                       Text(
                         'CURRENT ODOMETER',
-                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: settings.primaryColor,
+                        ),
                       ),
+                      // --- END OF FIX ---
                     ],
                   ),
-                  // --- END OF FIX ---
                   Row(
                     children: [
                       Expanded(
@@ -212,6 +204,7 @@ class _OverviewTabState extends State<OverviewTab> {
                       ? 'Due by: ${_nextDueDateReminder![DatabaseHelper.columnDueDate]}'
                       : 'All caught up!',
                   isFaded: _nextDueDateReminder == null,
+                  primaryColor: myAppColor,
                 ),
                 _buildDetailTile(
                   icon: Icons.speed,
@@ -222,6 +215,7 @@ class _OverviewTabState extends State<OverviewTab> {
                       ? 'Due by: ${_nextOdometerReminder![DatabaseHelper.columnDueOdometer]} ${settings.unitType}'
                       : 'All caught up!',
                   isFaded: _nextOdometerReminder == null,
+                  primaryColor: myAppColor,
                 ),
               ],
             ),
@@ -230,6 +224,7 @@ class _OverviewTabState extends State<OverviewTab> {
           // --- 3. Photo Gallery Card (Unchanged) ---
           const SizedBox(height: 20),
           Card(
+            // (This card is unchanged)
             elevation: 4,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -241,7 +236,7 @@ class _OverviewTabState extends State<OverviewTab> {
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                 ),
-                SizedBox(
+                Container(
                   height: 120,
                   child: _vehiclePhotos.isEmpty
                       ? const Center(child: Text('No photos added yet.'))
@@ -297,31 +292,29 @@ class _OverviewTabState extends State<OverviewTab> {
     );
   }
 
-  // --- (Helper widget is unchanged) ---
+  // (This helper is unchanged and already uses the theme color)
   Widget _buildDetailTile({
     required IconData icon,
     required String title,
     required String subtitle,
+    required Color primaryColor,
     bool isFaded = false,
   }) {
+    final Color? activeColor = primaryColor;
+    final Color? fadedColor = Theme.of(context).disabledColor;
+
     return ListTile(
-      leading: Icon(
-        icon,
-        color: isFaded ? Colors.grey[400] : Theme.of(context).primaryColor,
-      ),
+      leading: Icon(icon, color: isFaded ? fadedColor : activeColor),
       title: Text(
         title,
         style: TextStyle(
           fontWeight: FontWeight.bold,
-          color: isFaded ? Colors.grey[600] : null,
+          color: isFaded ? fadedColor : null,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: TextStyle(
-          fontSize: 14,
-          color: isFaded ? Colors.grey[600] : null,
-        ),
+        style: TextStyle(fontSize: 14, color: isFaded ? fadedColor : null),
       ),
     );
   }

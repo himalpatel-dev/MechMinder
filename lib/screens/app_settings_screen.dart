@@ -1,30 +1,27 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'dart:io';
-import '../service/database_helper.dart';
-import 'package:path_provider/path_provider.dart'; // To find the temp folder
-import 'package:share_plus/share_plus.dart'; // To open the share dialog
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
-import '../service/settings_provider.dart';
+import '../service/database_helper.dart'; // Make sure this path is correct
+import '../service/settings_provider.dart'; // Make sure this path is correct
+import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
 class AppSettingsScreen extends StatelessWidget {
   const AppSettingsScreen({super.key});
 
+  // --- (Your _exportDataAsJson and _importDataFromJson functions are unchanged) ---
   Future<void> _exportDataAsJson(BuildContext context) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final dbHelper = DatabaseHelper.instance;
-
     try {
-      // No permissions needed for this method!
-
       scaffoldMessenger.showSnackBar(
         const SnackBar(
           content: Text('Starting export... This may take a moment.'),
         ),
       );
-
-      // --- 1. GATHER ALL DATA ---
       final allVehicles = await dbHelper.queryAllRows(
         DatabaseHelper.tableVehicles,
       );
@@ -48,7 +45,6 @@ class AppSettingsScreen extends StatelessWidget {
       );
       final allPhotos = await dbHelper.queryAllRows(DatabaseHelper.tablePhotos);
 
-      // --- 2. CREATE THE BACKUP MAP ---
       Map<String, dynamic> backupData = {
         'export_date': DateTime.now().toIso8601String(),
         'vehicles': allVehicles,
@@ -61,10 +57,8 @@ class AppSettingsScreen extends StatelessWidget {
         'photos': allPhotos,
       };
 
-      // --- 3. CONVERT TO JSON ---
       String jsonBackup = jsonEncode(backupData);
 
-      // --- 4. SAVE THE FILE TO A TEMPORARY DIRECTORY ---
       final directory = await getTemporaryDirectory();
       String timestamp = DateTime.now()
           .toString()
@@ -77,7 +71,6 @@ class AppSettingsScreen extends StatelessWidget {
       await file.writeAsString(jsonBackup);
       print("Backup file created at: $filePath");
 
-      // --- 5. OPEN THE NATIVE "SHARE" DIALOG ---
       final xfile = XFile(filePath);
       await Share.shareXFiles(
         [xfile],
@@ -92,25 +85,57 @@ class AppSettingsScreen extends StatelessWidget {
     }
   }
 
+  // --- NEW: FUNCTION TO SHOW COLOR PICKER ---
+  void _showColorPickerDialog(BuildContext context, SettingsProvider settings) {
+    Color pickerColor = settings.primaryColor;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: const Text('Pick a color'),
+          content: SingleChildScrollView(
+            child: ColorPicker(
+              pickerColor: pickerColor,
+              onColorChanged: (Color color) {
+                pickerColor = color; // Update the color in the dialog
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              child: const Text('Cancel'),
+              onPressed: () {
+                Navigator.of(ctx).pop();
+              },
+            ),
+            ElevatedButton(
+              child: const Text('Save'),
+              onPressed: () {
+                settings.updatePrimaryColor(pickerColor); // Save to provider
+                Navigator.of(ctx).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _importDataFromJson(BuildContext context) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final dbHelper = DatabaseHelper.instance;
-
     try {
-      // --- 1. PICK THE .JSON FILE ---
       FilePickerResult? result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
-
       if (result == null || result.files.single.path == null) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(content: Text('No file selected.')),
         );
         return;
       }
-
-      // --- 2. SHOW A DANGEROUS WARNING ---
       if (!context.mounted) return;
       bool? confirmed = await showDialog<bool>(
         context: context,
@@ -118,6 +143,7 @@ class AppSettingsScreen extends StatelessWidget {
           title: const Text('ARE YOU SURE?'),
           content: const Text(
             'Restoring from a backup will DELETE ALL current data in the app. This cannot be undone.\n\nAre you sure you want to proceed?',
+            //style: TextStyle(color: Colors.black),
           ),
           actions: [
             TextButton(
@@ -126,7 +152,7 @@ class AppSettingsScreen extends StatelessWidget {
             ),
             ElevatedButton(
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
+                backgroundColor: Colors.red,
                 foregroundColor: Colors.black,
               ),
               onPressed: () => Navigator.of(ctx).pop(true),
@@ -135,42 +161,29 @@ class AppSettingsScreen extends StatelessWidget {
           ],
         ),
       );
-
       if (confirmed == null || confirmed == false) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(content: Text('Restore cancelled.')),
         );
         return;
       }
-
-      // --- 3. READ AND PARSE THE FILE ---
       scaffoldMessenger.showSnackBar(
         const SnackBar(content: Text('Restoring data... Please wait.')),
       );
       File backupFile = File(result.files.single.path!);
       String jsonString = await backupFile.readAsString();
       Map<String, dynamic> backupData = jsonDecode(jsonString);
-
-      // --- 4. WIPE THE DATABASE AND RESTORE ---
-      // This is the complex part. We need a new function in DatabaseHelper.
       await dbHelper.restoreBackup(backupData);
-
       scaffoldMessenger.showSnackBar(
         const SnackBar(
           content: Text('Restore complete! Reloading data...'),
           backgroundColor: Colors.green,
         ),
       );
-
-      // --- ADD THIS ---
-      // Wait for the SnackBar to show, then pop the screen
       await Future.delayed(const Duration(seconds: 2));
       if (context.mounted) {
-        Navigator.of(context).pop(true); // <-- Send "true" back
+        Navigator.of(context).pop(true); // Send back "true" to refresh
       }
-
-      // (In a real app, we'd force a restart or reload all state,
-      // but for now, we'll just show the message)
     } catch (e) {
       print("Error importing data: $e");
       scaffoldMessenger.showSnackBar(
@@ -179,6 +192,7 @@ class AppSettingsScreen extends StatelessWidget {
     }
   }
 
+  // --- (Your Currency dialogs are unchanged) ---
   void _showUnitDialog(BuildContext context, SettingsProvider settings) {
     showDialog(
       context: context,
@@ -214,27 +228,23 @@ class AppSettingsScreen extends StatelessWidget {
     );
   }
 
-  // --- NEW DIALOG FOR CHANGING CURRENCY ---
   void _showCurrencyDialog(BuildContext context, SettingsProvider settings) {
-    // A list of common currency symbols
     final Map<String, String> currencies = {
       '\$': 'Dollar (USD)',
       '₹': 'Rupee (INR)',
       '€': 'Euro (EUR)',
       '£': 'Pound (GBP)',
     };
-
     showDialog(
       context: context,
       builder: (BuildContext ctx) {
         return SimpleDialog(
           title: const Text('Select Currency Symbol'),
           children: [
-            // Loop through our map to create the radio buttons
             for (var entry in currencies.entries)
               RadioListTile<String>(
                 title: Text('${entry.value} (${entry.key})'),
-                value: entry.key, // The symbol is the value (e.g., "$")
+                value: entry.key,
                 groupValue: settings.currencySymbol,
                 onChanged: (String? value) {
                   if (value != null) {
@@ -243,13 +253,10 @@ class AppSettingsScreen extends StatelessWidget {
                   Navigator.of(ctx).pop();
                 },
               ),
-
-            // An option to add a custom one
             ListTile(
               title: const Text('Other...'),
               onTap: () {
                 Navigator.of(ctx).pop();
-                // This will open the *old* dialog for custom entry
                 _showCustomCurrencyDialog(context, settings);
               },
             ),
@@ -266,7 +273,6 @@ class AppSettingsScreen extends StatelessWidget {
     final currencyController = TextEditingController(
       text: settings.currencySymbol,
     );
-
     showDialog(
       context: context,
       builder: (BuildContext ctx) {
@@ -295,12 +301,69 @@ class AppSettingsScreen extends StatelessWidget {
       },
     );
   }
-  // A helper function to query all rows from any table
-  // Let's add this to DatabaseHelper instead (see Part C)
 
+  // --- NEW: FUNCTION TO SHOW THEME DIALOG ---
+  void _showThemeDialog(BuildContext context, SettingsProvider settings) {
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return SimpleDialog(
+          title: const Text('Select Theme'),
+          children: [
+            RadioListTile<ThemeMode>(
+              title: const Text('System Default'),
+              value: ThemeMode.system,
+              groupValue: settings.themeMode,
+              onChanged: (ThemeMode? value) {
+                if (value != null) {
+                  settings.updateThemeMode(value);
+                }
+                Navigator.of(ctx).pop();
+              },
+            ),
+            RadioListTile<ThemeMode>(
+              title: const Text('Light Mode'),
+              value: ThemeMode.light,
+              groupValue: settings.themeMode,
+              onChanged: (ThemeMode? value) {
+                if (value != null) {
+                  settings.updateThemeMode(value);
+                }
+                Navigator.of(ctx).pop();
+              },
+            ),
+            RadioListTile<ThemeMode>(
+              title: const Text('Dark Mode'),
+              value: ThemeMode.dark,
+              groupValue: settings.themeMode,
+              onChanged: (ThemeMode? value) {
+                if (value != null) {
+                  settings.updateThemeMode(value);
+                }
+                Navigator.of(ctx).pop();
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // --- NEW: Helper to get the current theme name as text ---
+  String _getThemeName(ThemeMode themeMode) {
+    switch (themeMode) {
+      case ThemeMode.light:
+        return 'Light Mode';
+      case ThemeMode.dark:
+        return 'Dark Mode';
+      case ThemeMode.system:
+        return 'System Default';
+    }
+  }
+
+  // --- UPDATED BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
-    // We wrap the list in a Consumer to get the settings
     return Consumer<SettingsProvider>(
       builder: (context, settings, child) {
         return Scaffold(
@@ -336,25 +399,52 @@ class AppSettingsScreen extends StatelessWidget {
                   style: TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
+
+              //Color Picker Tile
+              ListTile(
+                leading: Icon(Icons.color_lens, color: settings.primaryColor),
+                title: const Text('App Color'),
+                subtitle: const Text('Change the primary app color'),
+                trailing: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: settings.primaryColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.grey),
+                  ),
+                ),
+                onTap: () {
+                  _showColorPickerDialog(context, settings);
+                },
+              ),
+
+              // --- NEW: THEME BUTTON ---
+              ListTile(
+                leading: const Icon(Icons.brightness_6),
+                title: const Text('Theme'),
+                subtitle: Text(_getThemeName(settings.themeMode)),
+                onTap: () {
+                  _showThemeDialog(context, settings);
+                },
+              ),
+
+              // --- END NEW ---
               ListTile(
                 leading: const Icon(Icons.straighten),
                 title: const Text('Units'),
-                // Show the currently selected unit
                 subtitle: Text(
                   settings.unitType == 'km' ? 'Kilometers' : 'Miles',
                 ),
                 onTap: () {
-                  // Show the "Change Unit" dialog
                   _showUnitDialog(context, settings);
                 },
               ),
               ListTile(
                 leading: const Icon(Icons.attach_money),
                 title: const Text('Currency'),
-                // Show the currently selected currency
                 subtitle: Text(settings.currencySymbol),
                 onTap: () {
-                  // Show the "Change Currency" dialog
                   _showCurrencyDialog(context, settings);
                 },
               ),

@@ -12,27 +12,23 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     print("--- Background Task Started ---");
 
-    // 1. Initialize services (required for background tasks)
     await DatabaseHelper.instance.database;
     await NotificationService().initialize();
 
-    // 2. Get today's date
     final String today = DateTime.now().toIso8601String().split('T')[0];
     print("Checking for reminders due on: $today");
 
-    // 3. Check the database for reminders
     final reminders = await DatabaseHelper.instance.queryRemindersDueOn(today);
     print("Found ${reminders.length} reminders due today.");
 
-    // 4. Fire a notification for each reminder
     for (final reminder in reminders) {
-      final title = 'Vehicle Service Due';
-      final servicedue = reminder['template_name'] ?? 'Service Due';
-      final body = 'Your "$servicedue" service is due today!';
+      final String appName = inputData?['appName'] ?? 'MechMinder';
+      final serviceName = reminder['template_name'] ?? 'Service';
+      final body = 'Your "$serviceName" service is due today!';
 
       await NotificationService().showImmediateReminder(
         id: reminder[DatabaseHelper.columnId],
-        title: title,
+        title: appName,
         body: body,
       );
     }
@@ -41,35 +37,27 @@ void callbackDispatcher() {
     return Future.value(true);
   });
 }
-// --- END OF BACKGROUND TASK ---
 
 Future<void> main() async {
+  // (Your main function is unchanged)
   WidgetsFlutterBinding.ensureInitialized();
 
   await DatabaseHelper.instance.database;
   print("[Main] Database is initialized and ready.");
 
-  // --- INITIALIZE NOTIFICATIONS AND WORKMANAGER ---
   await NotificationService().initialize();
   await NotificationService().requestPermissions();
 
-  // Initialize Workmanager
-  await Workmanager().initialize(
-    callbackDispatcher, // The function to run in the background
-    isInDebugMode: true, // Shows logs in the console
-  );
+  await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
 
-  // Register the periodic task
   await Workmanager().registerPeriodicTask(
-    "1", // A unique ID for this task
-    "checkVehicleReminders", // The name of the task
-    frequency: const Duration(days: 1), // How often to run
-    initialDelay: const Duration(minutes: 15), // When to start the first check
+    "1",
+    "checkVehicleReminders",
+    frequency: const Duration(days: 1),
+    initialDelay: const Duration(minutes: 15),
   );
 
-  // 6. Run the app
   runApp(
-    // This "provides" your settings brain to all widgets below it
     ChangeNotifierProvider(
       create: (context) => SettingsProvider(),
       child: const MyApp(),
@@ -77,17 +65,87 @@ Future<void> main() async {
   );
 }
 
-// --- THIS IS YOUR APP CLASS (UNCHANGED) ---
 class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'MechMinder – Never Miss a Service Again',
-      theme: ThemeData(primarySwatch: Colors.blue, useMaterial3: true),
-      debugShowCheckedModeBanner: false,
-      home: const VehicleListScreen(),
+    return Consumer<SettingsProvider>(
+      builder: (context, settings, child) {
+        final Color myAppColor = settings.primaryColor;
+
+        // --- THIS IS THE FIX ---
+        // We define the bordered style here
+        final MenuStyle borderedMenuStyle = MenuStyle(
+          shape: MaterialStateProperty.all(
+            RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8.0),
+              side: BorderSide(
+                // Use a subtle border color that works in both themes
+                color: Colors.grey.withOpacity(0.5),
+                width: 1,
+              ),
+            ),
+          ),
+        );
+        // --- END OF FIX ---
+
+        return MaterialApp(
+          title: 'MechMinder',
+          debugShowCheckedModeBanner: false,
+          themeMode: settings.themeMode,
+
+          // --- 2. DEFINE THE LIGHT THEME ---
+          theme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.light,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: myAppColor,
+              brightness: Brightness.light,
+            ),
+            // --- ADD THIS ---
+            dropdownMenuTheme: DropdownMenuThemeData(
+              menuStyle: borderedMenuStyle.copyWith(
+                backgroundColor: MaterialStateProperty.all(Colors.white),
+                surfaceTintColor: MaterialStateProperty.all(Colors.white),
+              ),
+            ),
+            // --- END ADD ---
+          ),
+
+          // --- 3. DEFINE THE DARK THEME ---
+          darkTheme: ThemeData(
+            useMaterial3: true,
+            brightness: Brightness.dark,
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: myAppColor,
+              brightness: Brightness.dark,
+            ),
+
+            // --- ADD THIS ---
+            dropdownMenuTheme: DropdownMenuThemeData(
+              menuStyle: borderedMenuStyle.copyWith(
+                backgroundColor: MaterialStateProperty.all(Colors.grey[800]),
+                surfaceTintColor: MaterialStateProperty.all(Colors.grey[800]),
+              ),
+            ),
+
+            // --- END ADD ---
+            elevatedButtonTheme: ElevatedButtonThemeData(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: myAppColor,
+                foregroundColor: Colors.white,
+              ),
+            ),
+            floatingActionButtonTheme: FloatingActionButtonThemeData(
+              backgroundColor: myAppColor,
+              foregroundColor: Colors.white,
+            ),
+          ),
+
+          home: const VehicleListScreen(),
+        );
+      },
     );
   }
 }

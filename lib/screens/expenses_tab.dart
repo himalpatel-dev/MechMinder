@@ -83,9 +83,12 @@ class _ExpensesTabState extends State<ExpensesTab> {
                 children: [
                   TextFormField(
                     controller: _dateController,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       labelText: 'Date',
-                      suffixIcon: Icon(Icons.calendar_today),
+                      suffixIcon: Icon(
+                        Icons.calendar_today,
+                        color: settings.primaryColor,
+                      ),
                     ),
                     readOnly: true,
                     onTap: () async {
@@ -272,7 +275,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
         title: const Text('Delete Expense?'),
         content: const Text(
           'Are you sure you want to permanently delete this expense?',
-          style: TextStyle(color: Colors.black),
+          //  style: TextStyle(color: Colors.black),
         ),
         actions: [
           TextButton(
@@ -332,16 +335,19 @@ class _ExpensesTabState extends State<ExpensesTab> {
                 Padding(
                   padding: const EdgeInsets.all(8.0),
                   child: SegmentedButton<ExpenseGrouping>(
-                    segments: const [
+                    segments: [
                       ButtonSegment(
                         value: ExpenseGrouping.byDate,
                         label: Text('By Date'),
-                        icon: Icon(Icons.calendar_month),
+                        icon: Icon(
+                          Icons.calendar_month,
+                          color: settings.primaryColor,
+                        ),
                       ),
                       ButtonSegment(
                         value: ExpenseGrouping.byCategory,
                         label: Text('By Category'),
-                        icon: Icon(Icons.label),
+                        icon: Icon(Icons.label, color: settings.primaryColor),
                       ),
                     ],
                     selected: {_currentGrouping},
@@ -387,7 +393,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
                                   style: TextStyle(
                                     fontWeight: FontWeight.bold,
                                     fontSize: 16,
-                                    color: Theme.of(context).primaryColor,
+                                    // color: Theme.of(context).primaryColor,
                                   ),
                                 ),
                                 initiallyExpanded: false,
@@ -433,7 +439,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
         child: ListTile(
           leading: Icon(
             _getIconForCategory(expense[DatabaseHelper.columnCategory]),
-            color: Colors.green[700],
+            color: settings.primaryColor,
             size: 36,
           ),
           title: Text(
@@ -442,7 +448,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
           ),
           subtitle: Text(
             subtitleText,
-            style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),

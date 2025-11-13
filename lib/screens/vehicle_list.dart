@@ -75,7 +75,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
         actions: [
           // (Your App Bar buttons are unchanged)
           IconButton(
-            icon: const Icon(Icons.store),
+            icon: Icon(Icons.store, color: settings.primaryColor),
             tooltip: 'Manage Vendors',
             onPressed: () {
               Navigator.push(
@@ -87,7 +87,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.list_alt),
+            icon: Icon(Icons.list_alt, color: settings.primaryColor),
             tooltip: 'Manage Templates',
             onPressed: () {
               Navigator.push(
@@ -99,7 +99,7 @@ class _VehicleListScreenState extends State<VehicleListScreen> {
             },
           ),
           IconButton(
-            icon: const Icon(Icons.settings),
+            icon: Icon(Icons.settings, color: settings.primaryColor),
             tooltip: 'App Settings',
             onPressed: () {
               Navigator.push(

@@ -113,7 +113,7 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 16,
-                        color: Theme.of(context).primaryColor,
+                        //color: Theme.of(context).primaryColor,
                       ),
                     ),
                     // Expand the first (latest) month by default
@@ -154,7 +154,7 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
       },
       child: Container(
         decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.grey[200]!)),
+          border: Border(top: BorderSide(color: Colors.grey[300]!)),
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
@@ -225,7 +225,7 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
         Expanded(
           child: Text(
             text,
-            style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),

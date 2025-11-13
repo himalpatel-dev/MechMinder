@@ -5,9 +5,8 @@ import 'package:image_picker/image_picker.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart'; // Make sure this path is correct
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 
-// (Helper class is unchanged)
+// --- (UPDATED HELPER CLASS) ---
 class ServiceItem {
   String name;
   double qty;
@@ -23,9 +22,12 @@ class ServiceItem {
     this.templateId,
   }) {
     nameController.text = name;
+    // --- FIX 1: Show "1" instead of "1.0" ---
     qtyController.text = qty.toStringAsFixed(0);
+    // --- FIX 2: Show "0" instead of "0.0" ---
     costController.text = cost.toStringAsFixed(0);
   }
+
   void dispose() {
     nameController.dispose();
     qtyController.dispose();
@@ -66,11 +68,10 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   final List<ServiceItem> _serviceItems = [ServiceItem()];
   int? _selectedTemplateId;
 
-  // (State for Photos & Scanning)
+  // (State for Photos)
   final ImagePicker _picker = ImagePicker();
-  final TextRecognizer _textRecognizer = TextRecognizer();
-  List<Map<String, dynamic>> _existingPhotos = [];
   final List<XFile> _newImageFiles = [];
+  List<Map<String, dynamic>> _existingPhotos = [];
 
   // (State for Loading/Editing)
   bool _isEditMode = false;
@@ -119,6 +120,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     final items = data[1] as List<Map<String, dynamic>>;
     _existingPhotos = List.from(data[2] as List<Map<String, dynamic>>);
     if (service == null) {
+      /* (Error handling) */
       return;
     }
     _serviceNameController.text =
@@ -171,13 +173,11 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
       );
-      if (pickedFile == null) return;
-
-      setState(() {
-        _newImageFiles.add(pickedFile);
-      });
-
-      _scanImageForParts(pickedFile);
+      if (pickedFile != null) {
+        setState(() {
+          _newImageFiles.add(pickedFile);
+        });
+      }
     } catch (e) {
       print("Error picking image: $e");
     }
@@ -197,8 +197,8 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           _serviceItems[0].nameController.text.isEmpty) {
         _serviceItems[0].nameController.text =
             templateToAdd[DatabaseHelper.columnName];
-        _serviceItems[0].qtyController.text = '1';
-        _serviceItems[0].costController.text = '0';
+        _serviceItems[0].qtyController.text = '1'; // Use "1"
+        _serviceItems[0].costController.text = '0'; // Use "0"
         _serviceItems[0].templateId = templateToAdd[DatabaseHelper.columnId];
       } else {
         _serviceItems.add(
@@ -228,10 +228,139 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   }
 
   // --- SAVE FUNCTION (unchanged) ---
+  // Future<void> _saveService() async {
+  //   print(
+  //     "[DEBUG] Save button pressed. Service Name is: '${_serviceNameController.text}'",
+  //   );
+  //   if (_formKey.currentState!.validate()) {
+  //     _updateTotalCost(); // Recalculate total
+
+  //     Map<String, dynamic> serviceRow = {
+  //       DatabaseHelper.columnVehicleId: widget.vehicleId,
+  //       DatabaseHelper.columnServiceName: _serviceNameController.text,
+  //       DatabaseHelper.columnServiceDate: _dateController.text,
+  //       DatabaseHelper.columnOdometer: int.tryParse(_odometerController.text),
+  //       DatabaseHelper.columnTotalCost: double.tryParse(
+  //         _totalCostController.text,
+  //       ),
+  //       DatabaseHelper.columnVendorId: _selectedVendorId,
+  //       DatabaseHelper.columnNotes: _notesController.text,
+  //     };
+  //     int serviceId;
+
+  //     if (_isEditMode) {
+  //       serviceId = widget.serviceId!;
+  //       serviceRow[DatabaseHelper.columnId] = serviceId;
+  //       await dbHelper.updateService(serviceRow);
+  //     } else {
+  //       serviceId = await dbHelper.insertService(serviceRow);
+  //     }
+
+  //     // --- 2. DELETE AND RE-SAVE ALL ITEMS ---
+  //     await dbHelper.deleteAllServiceItemsForService(serviceId);
+  //     List<int> templateIdsUsed =
+  //         []; // This is the list of templates in *this* service
+
+  //     for (var item in _serviceItems) {
+  //       String name = item.nameController.text;
+  //       if (name.isNotEmpty) {
+  //         double qty = double.tryParse(item.qtyController.text) ?? 1.0;
+  //         double cost = double.tryParse(item.costController.text) ?? 0.0;
+  //         Map<String, dynamic> itemRow = {
+  //           DatabaseHelper.columnServiceId: serviceId,
+  //           DatabaseHelper.columnName: name,
+  //           DatabaseHelper.columnQty: qty,
+  //           DatabaseHelper.columnUnitCost: cost,
+  //           DatabaseHelper.columnTotalCost: (qty * cost),
+  //           DatabaseHelper.columnTemplateId: item.templateId,
+  //         };
+  //         await dbHelper.insertServiceItem(itemRow);
+  //         if (item.templateId != null) {
+  //           templateIdsUsed.add(item.templateId!);
+  //         }
+  //       }
+  //     }
+
+  //     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
+  //     if (newOdometer > widget.currentOdometer) {
+  //       await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
+  //     }
+
+  //     // --- 3. "AUTO-COMPLETE" AND CREATE REMINDERS (THE CORRECT LOGIC) ---
+  //     // This new logic only touches reminders for templates
+  //     // that are part of this service.
+
+  //     if (templateIdsUsed.isNotEmpty) {
+  //       print(
+  //         "Auto-completing and creating ${templateIdsUsed.length} new reminders...",
+  //       );
+
+  //       for (int templateId in templateIdsUsed.toSet()) {
+  //         // 1. "AUTO-COMPLETE": Delete any old, pending reminder for this template.
+  //         print(
+  //           "  > Deleting old reminder for template $templateId (if one exists)...",
+  //         );
+  //         await dbHelper.deleteRemindersByTemplate(
+  //           widget.vehicleId,
+  //           templateId,
+  //         );
+
+  //         // 2. "CREATE NEW": Add the new reminder with the calculated due date.
+  //         final template = await dbHelper.queryTemplateById(templateId);
+  //         if (template != null) {
+  //           int? intervalDays = template[DatabaseHelper.columnIntervalDays];
+  //           int? intervalKm = template[DatabaseHelper.columnIntervalKm];
+  //           String? nextDueDate;
+  //           int? nextDueOdometer;
+
+  //           if (intervalDays != null && intervalDays >= 0) {
+  //             // Use >=
+  //             DateTime serviceDate = DateTime.parse(_dateController.text);
+  //             nextDueDate = serviceDate
+  //                 .add(Duration(days: intervalDays))
+  //                 .toIso8601String()
+  //                 .split('T')[0];
+  //           }
+  //           if (intervalKm != null && intervalKm > 0) {
+  //             nextDueOdometer = newOdometer + intervalKm;
+  //           }
+  //           if (nextDueDate != null || nextDueOdometer != null) {
+  //             print("  > Creating new reminder for template $templateId");
+
+  //             await dbHelper.insertReminder({
+  //               DatabaseHelper.columnVehicleId: widget.vehicleId,
+  //               DatabaseHelper.columnTemplateId: templateId,
+  //               DatabaseHelper.columnDueDate: nextDueDate,
+  //               DatabaseHelper.columnDueOdometer: nextDueOdometer,
+  //             });
+
+  //             // We are not scheduling notifications, the background task will.
+  //           }
+  //         }
+  //       }
+  //     }
+  //     print("--- REMINDER SYNC COMPLETE ---");
+  //     // --- END OF NEW LOGIC ---
+
+  //     // ... (Save Photos logic) ...
+  //     for (var imageFile in _newImageFiles) {
+  //       await dbHelper.insertPhoto({
+  //         DatabaseHelper.columnParentId: serviceId,
+  //         DatabaseHelper.columnParentType: 'service',
+  //         DatabaseHelper.columnUri: imageFile.path,
+  //       });
+  //     }
+
+  //     if (mounted) {
+  //       Navigator.of(context).pop();
+  //     }
+  //   }
+  // }
+
   Future<void> _saveService() async {
-    // (This entire function is unchanged from your last version)
     if (_formKey.currentState!.validate()) {
-      _updateTotalCost();
+      _updateTotalCost(); // Recalculate total
+
       Map<String, dynamic> serviceRow = {
         DatabaseHelper.columnVehicleId: widget.vehicleId,
         DatabaseHelper.columnServiceName: _serviceNameController.text,
@@ -244,6 +373,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         DatabaseHelper.columnNotes: _notesController.text,
       };
       int serviceId;
+
       if (_isEditMode) {
         serviceId = widget.serviceId!;
         serviceRow[DatabaseHelper.columnId] = serviceId;
@@ -251,8 +381,12 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       } else {
         serviceId = await dbHelper.insertService(serviceRow);
       }
+
+      // --- 2. DELETE AND RE-SAVE ALL ITEMS (unchanged) ---
       await dbHelper.deleteAllServiceItemsForService(serviceId);
-      List<int> newTemplateIdsUsed = [];
+      List<int> newTemplateIdsUsed =
+          []; // Get list of templates in this service
+
       for (var item in _serviceItems) {
         String name = item.nameController.text;
         if (name.isNotEmpty) {
@@ -272,27 +406,26 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           }
         }
       }
+
       int newOdometer = int.tryParse(_odometerController.text) ?? 0;
       if (newOdometer > widget.currentOdometer) {
         await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
       }
-      final newTemplateIdSet = newTemplateIdsUsed.toSet();
-      final oldReminders = await dbHelper.queryTemplateRemindersForVehicle(
-        widget.vehicleId,
+
+      // --- 3. SYNC REMINDERS (THE NEW, PERFECT LOGIC) ---
+      print("--- STARTING REMINDER SYNC ---");
+
+      // 1. DELETE all reminders previously created by *this service*.
+      // This fixes your "remove part" bug.
+      print(
+        "  > Deleting all old reminders linked to this service (ID: $serviceId)...",
       );
-      final oldTemplateIdsInDB = oldReminders
-          .map((r) => r[DatabaseHelper.columnTemplateId] as int)
-          .toSet();
-      final remindersToDelete = oldTemplateIdsInDB.difference(newTemplateIdSet);
-      if (remindersToDelete.isNotEmpty) {
-        for (int templateIdToDelete in remindersToDelete) {
-          final reminder = oldReminders.firstWhere(
-            (r) => r[DatabaseHelper.columnTemplateId] == templateIdToDelete,
-          );
-          await dbHelper.deleteReminder(reminder[DatabaseHelper.columnId]);
-        }
-      }
-      final remindersToAdd = newTemplateIdSet.difference(oldTemplateIdsInDB);
+      await dbHelper.deleteRemindersByService(serviceId);
+
+      // 2. Find reminders TO ADD (based on parts list)
+      final remindersToAdd = newTemplateIdsUsed.toSet();
+      print("[DEBUG] Reminders TO ADD (Template IDs): $remindersToAdd");
+
       if (remindersToAdd.isNotEmpty) {
         for (int templateIdToAdd in remindersToAdd) {
           final template = await dbHelper.queryTemplateById(templateIdToAdd);
@@ -301,6 +434,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             int? intervalKm = template[DatabaseHelper.columnIntervalKm];
             String? nextDueDate;
             int? nextDueOdometer;
+
             if (intervalDays != null && intervalDays >= 0) {
               DateTime serviceDate = DateTime.parse(_dateController.text);
               nextDueDate = serviceDate
@@ -312,8 +446,11 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               nextDueOdometer = newOdometer + intervalKm;
             }
             if (nextDueDate != null || nextDueOdometer != null) {
+              print("  > Creating new reminder for template $templateIdToAdd");
+
               await dbHelper.insertReminder({
                 DatabaseHelper.columnVehicleId: widget.vehicleId,
+                DatabaseHelper.columnServiceId: serviceId, // <-- THE FIX
                 DatabaseHelper.columnTemplateId: templateIdToAdd,
                 DatabaseHelper.columnDueDate: nextDueDate,
                 DatabaseHelper.columnDueOdometer: nextDueOdometer,
@@ -322,6 +459,10 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           }
         }
       }
+      print("--- REMINDER SYNC COMPLETE ---");
+      // --- END OF NEW LOGIC ---
+
+      // (Save Photos logic is unchanged)
       for (var imageFile in _newImageFiles) {
         await dbHelper.insertPhoto({
           DatabaseHelper.columnParentId: serviceId,
@@ -329,201 +470,14 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           DatabaseHelper.columnUri: imageFile.path,
         });
       }
+
       if (mounted) {
         Navigator.of(context).pop();
       }
     }
   }
 
-  // --- ALL SCANNING FUNCTIONS ARE NEW OR UPDATED ---
-
-  Future<void> _scanImageForParts(XFile image) async {
-    try {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Scanning image for parts...')),
-      );
-
-      final inputImage = InputImage.fromFilePath(image.path);
-      final RecognizedText recognizedText = await _textRecognizer.processImage(
-        inputImage,
-      );
-
-      String fullText = recognizedText.text;
-      print("--- SCANNED TEXT ---");
-      print(fullText);
-      print("---------------------");
-
-      // --- 1. Find the Date and Total ---
-      String? foundDate = _parseDate(fullText);
-      String? foundTotal = _parseTotal(fullText);
-
-      // --- 2. Find line items ---
-      List<ServiceItem> foundItems = _parseLineItems(fullText);
-
-      // Update the main form
-      setState(() {
-        if (foundDate != null) {
-          _dateController.text = foundDate;
-        }
-
-        if (foundItems.isNotEmpty) {
-          // Clear the initial blank item if it's there
-          if (_serviceItems.length == 1 &&
-              _serviceItems[0].nameController.text.isEmpty) {
-            _serviceItems.clear();
-          }
-          _serviceItems.addAll(foundItems);
-        }
-
-        // --- Smart Total Logic ---
-        // If we found a "Total Amount Due" on the receipt, use it.
-        // It's usually more accurate than our line item total
-        if (foundTotal != null) {
-          _totalCostController.text = foundTotal;
-        } else {
-          // If no grand total, calculate it from the parts we found
-          _updateTotalCost();
-        }
-      });
-
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Scan complete! Added ${foundItems.length} parts.'),
-          backgroundColor: Colors.green,
-        ),
-      );
-    } catch (e) {
-      print("Error scanning receipt: $e");
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Error scanning receipt.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-    }
-  }
-
-  // --- NEW: Smarter Date Parser ---
-  String? _parseDate(String text) {
-    // Regex 1: 2025-11-12
-    // Regex 2: 12/11/2025 or 12-11-2025
-    // Regex 3: April 15, 2050
-    final RegExp dateRegex = RegExp(
-      r'(\d{4}-\d{2}-\d{2})|(\d{2}[/-]\d{2}[/-]\d{4})|((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},\s+\d{4})',
-      caseSensitive: false,
-    );
-
-    // Find *all* dates, not just the first one
-    final matches = dateRegex.allMatches(text);
-    if (matches.isEmpty) return null;
-
-    // We'll take the first one we can successfully parse
-    for (var match in matches) {
-      String dateStr = match.group(0)!;
-      try {
-        if (dateStr.contains('/')) {
-          final parts = dateStr.split('/'); // DD/MM/YYYY
-          dateStr = '${parts[2]}-${parts[1]}-${parts[0]}';
-        } else if (dateStr.contains('-') && dateStr.length != 10) {
-          // DD-MM-YYYY
-          final parts = dateStr.split('-');
-          dateStr = '${parts[2]}-${parts[1]}-${parts[0]}';
-        } else if (dateStr.contains(',')) {
-          // "April 15, 2050"
-          final DateTime parsedDate = DateTime.parse(dateStr);
-          dateStr = parsedDate.toIso8601String().split('T')[0];
-        }
-
-        DateTime.parse(dateStr); // Final check to make sure it's valid
-        return dateStr; // Return the first valid date
-      } catch (e) {
-        // This format failed, try the next match
-        continue;
-      }
-    }
-    return null;
-  }
-
-  // --- NEW: Smarter Total Parser ---
-  String? _parseTotal(String text) {
-    // Looks for "Total", "Amount Due", "Price", etc., followed by a price $123.45 or ₹ 123.45
-    final RegExp totalRegex = RegExp(
-      r'(?:total|amount|price|due|grand total|subtotal|total amount due|total customer amount)[\s:]*[\$₹]?\s*([\d,]+\.\d{2})',
-      caseSensitive: false,
-    );
-
-    final matches = totalRegex.allMatches(text);
-    if (matches.isEmpty) return null;
-
-    double largestTotal = 0.0;
-    for (var match in matches) {
-      final String valueStr = match.group(1)!.replaceAll(',', '');
-      final double value = double.tryParse(valueStr) ?? 0.0;
-      if (value > largestTotal) {
-        largestTotal = value;
-      }
-    }
-
-    return largestTotal > 0 ? largestTotal.toStringAsFixed(2) : null;
-  }
-
-  // --- NEW: Smarter Line Item Parser for your invoice ---
-  List<ServiceItem> _parseLineItems(String text) {
-    final List<ServiceItem> items = [];
-
-    // This new regex looks for 4 columns:
-    // 1. Description (non-greedy)
-    // 2. Quantity (one or more digits, with decimals)
-    // 3. Unit Price (e.g., $50.00 or 50.00)
-    // 4. Total Price (e.g., $100.00 or 100.00)
-    final RegExp lineRegex = RegExp(
-      // Group 1: Item Name (start of line, multiple words, numbers, slashes, dashes)
-      // Group 2: Quantity (a number, possibly with a decimal)
-      // Group 3: Unit Price (a number with a decimal)
-      // Group 4: Total Price (a number with a decimal at the end of the line)
-      r'^([a-zA-Z0-9\s\-/]+?)\s+([\d\.]+)\s+\$?([\d,]+\.\d{2})\s+.+\$?([\d,]+\.\d{2})$',
-      multiLine: true,
-      caseSensitive: false,
-    );
-
-    final matches = lineRegex.allMatches(text);
-    print("--- Found ${matches.length} potential parts ---");
-
-    for (var match in matches) {
-      try {
-        String name = match
-            .group(1)!
-            .trim(); // e.g., "Replacement of brake pads"
-        double qty =
-            double.tryParse(match.group(2)!) ?? 1.0; // e.g., "2" or "2.30"
-        double cost =
-            double.tryParse(match.group(3)!.replaceAll(',', '')) ??
-            0.0; // e.g., "50.00"
-
-        // Skip lines that are just table headers
-        if (name.toLowerCase().contains('description') ||
-            name.toLowerCase().contains('item')) {
-          continue;
-        }
-        // Skip lines that are totals
-        if (name.toLowerCase().contains('subtotal') ||
-            name.toLowerCase().contains('tax')) {
-          continue;
-        }
-
-        print("  > Found: $name, Qty: $qty, Cost: $cost");
-        items.add(ServiceItem(name: name, qty: qty, cost: cost));
-      } catch (e) {
-        print("Error parsing line: ${match.group(0)}");
-      }
-    }
-    return items;
-  }
-  // --- END OF NEW FUNCTIONS ---
-
-  // --- MAIN BUILD METHOD (Unchanged) ---
+  // --- MAIN BUILD METHOD (unchanged) ---
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
@@ -538,6 +492,14 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         )
         .toList();
 
+    // Define a standard border and fill color for all fields
+    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
+    final Color? fillColor = isDarkMode ? Colors.grey[800] : Colors.grey[100];
+    final InputBorder fieldBorder = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(8),
+      borderSide: BorderSide(color: Colors.grey[400]!),
+    );
+
     return Scaffold(
       appBar: AppBar(
         title: Text(_isEditMode ? 'Edit Service' : 'Add Service Record'),
@@ -549,14 +511,15 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               child: ListView(
                 padding: const EdgeInsets.all(16.0),
                 children: [
+                  // --- CARD 1: SERVICE DETAILS ---
                   _buildSectionCard(
                     title: 'Service Details',
                     children: [
                       TextFormField(
                         controller: _serviceNameController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Service Name (e.g., General Service)',
-                          icon: Icon(Icons.label),
+                          icon: Icon(Icons.label, color: settings.primaryColor),
                         ),
                         validator: (value) => (value == null || value.isEmpty)
                             ? 'Please enter a service name'
@@ -568,12 +531,15 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                         child: AbsorbPointer(
                           child: TextFormField(
                             controller: _dateController,
-                            decoration: const InputDecoration(
+                            decoration: InputDecoration(
                               labelText: 'Service Date',
-                              icon: Icon(Icons.calendar_today),
+                              icon: Icon(
+                                Icons.calendar_today,
+                                color: settings.primaryColor,
+                              ),
                             ),
-                            enabled: false,
-                            style: const TextStyle(color: Colors.black),
+                            enabled: true,
+                            // style: const TextStyle(color: Colors.black),
                             validator: (value) =>
                                 (value == null || value.isEmpty)
                                 ? 'Please enter a date'
@@ -586,7 +552,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                         controller: _odometerController,
                         decoration: InputDecoration(
                           labelText: 'Odometer',
-                          icon: const Icon(Icons.speed),
+                          icon: Icon(Icons.speed, color: settings.primaryColor),
                           suffixText: settings.unitType,
                         ),
                         keyboardType: TextInputType.number,
@@ -601,6 +567,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   ),
                   const SizedBox(height: 20),
 
+                  // --- CARD 2: PARTS & COST ---
                   _buildSectionCard(
                     title: 'Parts & Cost',
                     children: [
@@ -613,6 +580,16 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                                   child: DropdownButtonFormField<int>(
                                     value: _selectedTemplateId,
                                     hint: const Text('Add part from template'),
+                                    decoration: InputDecoration(
+                                      border: fieldBorder,
+                                      filled: true,
+                                      fillColor: fillColor,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 12.0,
+                                            vertical: 15.0,
+                                          ),
+                                    ),
                                     items: availableTemplates.map((template) {
                                       return DropdownMenuItem<int>(
                                         value:
@@ -648,8 +625,14 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                         ],
                       ),
                       TextButton.icon(
-                        icon: const Icon(Icons.add),
-                        label: const Text('Add Manual Item'),
+                        icon: Icon(Icons.add, color: settings.primaryColor),
+                        label: Text(
+                          'Add Manual Item',
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: settings.primaryColor,
+                          ),
+                        ),
                         onPressed: () {
                           setState(() {
                             _serviceItems.add(ServiceItem());
@@ -661,8 +644,23 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                         controller: _totalCostController,
                         decoration: InputDecoration(
                           labelText: 'Total Cost (Auto-calculated)',
-                          icon: const Icon(Icons.attach_money),
-                          prefixText: settings.currencySymbol,
+                          prefixIcon: Padding(
+                            padding: const EdgeInsets.only(
+                              top: 12,
+                              left: 12,
+                              right: 12,
+                            ),
+                            child: Text(
+                              settings
+                                  .currencySymbol, // This is your dynamic symbol
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: settings
+                                    .primaryColor, // Uses your theme color
+                              ),
+                            ),
+                          ),
                         ),
                         readOnly: true,
                         keyboardType: const TextInputType.numberWithOptions(
@@ -673,6 +671,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   ),
                   const SizedBox(height: 20),
 
+                  // --- CARD 3: VENDOR & NOTES ---
                   _buildSectionCard(
                     title: 'Vendor & Notes',
                     children: [
@@ -681,9 +680,16 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                           : DropdownButtonFormField<int>(
                               value: _selectedVendorId,
                               hint: const Text('Select Vendor (Optional)'),
-                              decoration: const InputDecoration(
+                              decoration: InputDecoration(
+                                // <-- Use new style
                                 labelText: 'Vendor',
-                                icon: Icon(Icons.store),
+                                prefixIcon: Icon(
+                                  Icons.store,
+                                  color: settings.primaryColor,
+                                ),
+                                border: fieldBorder,
+                                filled: true,
+                                fillColor: fillColor,
                               ),
                               items: _allVendors
                                   .map(
@@ -704,9 +710,9 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                       const SizedBox(height: 10),
                       TextFormField(
                         controller: _notesController,
-                        decoration: const InputDecoration(
+                        decoration: InputDecoration(
                           labelText: 'Notes (Optional)',
-                          icon: Icon(Icons.notes),
+                          icon: Icon(Icons.notes, color: settings.primaryColor),
                         ),
                         maxLines: 3,
                       ),
@@ -714,6 +720,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   ),
                   const SizedBox(height: 20),
 
+                  // --- CARD 4: PHOTOS ---
                   _buildSectionCard(
                     title: 'Photos (Receipts, Parts, etc.)',
                     children: [
@@ -726,37 +733,26 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                               _newImageFiles.length +
                               1,
                           itemBuilder: (context, index) {
-                            // "Add" button
+                            // (All photo logic is unchanged)
                             if (index ==
                                 _existingPhotos.length +
                                     _newImageFiles.length) {
                               return GestureDetector(
-                                onTap:
-                                    _pickImage, // This now calls the scanning function
+                                onTap: _pickImage,
                                 child: Container(
                                   width: 100,
                                   decoration: BoxDecoration(
                                     border: Border.all(color: Colors.grey),
                                     borderRadius: BorderRadius.circular(8),
                                   ),
-                                  child: const Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.camera_alt,
-                                        size: 30,
-                                        color: Colors.grey,
-                                      ),
-                                      Text(
-                                        "Scan Bill",
-                                        style: TextStyle(color: Colors.grey),
-                                      ),
-                                    ],
+                                  child: const Icon(
+                                    Icons.add_a_photo,
+                                    size: 40,
+                                    color: Colors.grey,
                                   ),
                                 ),
                               );
                             }
-                            // Existing photo
                             if (index < _existingPhotos.length) {
                               final photo = _existingPhotos[index];
                               return Stack(
@@ -803,7 +799,6 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                                 ],
                               );
                             }
-                            // New photo
                             final newPhotoIndex =
                                 index - _existingPhotos.length;
                             final photoFile = _newImageFiles[newPhotoIndex];
@@ -872,7 +867,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     );
   }
 
-  // (This helper is unchanged)
+  // --- NEW: Helper widget to build the Card sections ---
   Widget _buildSectionCard({
     required String title,
     required List<Widget> children,
@@ -893,7 +888,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     );
   }
 
-  // (This helper is unchanged)
+  // --- (UPDATED SERVICE ITEM ROW) ---
   Widget _buildServiceItemRow(
     ServiceItem item,
     int index,
@@ -917,6 +912,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               controller: item.qtyController,
               decoration: const InputDecoration(labelText: 'Qty'),
               keyboardType: TextInputType.number,
+              // --- FIX 1: Allow only whole numbers ---
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: (_) => _updateTotalCost(),
             ),
@@ -933,6 +929,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              // --- FIX 3: Clear "0" on tap ---
               onTap: () {
                 if (item.costController.text == '0') {
                   item.costController.clear();
@@ -946,6 +943,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             onPressed: () {
               setState(() {
                 if (_serviceItems.length > 1) {
+                  // --- Must dispose before removing ---
                   item.dispose();
                   _serviceItems.removeAt(index);
                 } else {
@@ -961,20 +959,20 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     );
   }
 
-  // (This helper is unchanged)
+  // --- NEW: Add a dispose method ---
   @override
   void dispose() {
+    // Dispose all controllers in the main state
     _serviceNameController.dispose();
     _dateController.dispose();
     _odometerController.dispose();
     _totalCostController.dispose();
     _notesController.dispose();
 
+    // Loop and dispose all controllers in the items list
     for (var item in _serviceItems) {
       item.dispose();
     }
-
-    _textRecognizer.close();
 
     super.dispose();
   }

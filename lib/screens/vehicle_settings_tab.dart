@@ -127,7 +127,8 @@ class VehicleSettingsTab extends StatelessWidget {
                       SnackBar(
                         content: Text(result ?? 'An unknown error occurred.'),
                         backgroundColor:
-                            result != null && result.startsWith('Report generated')
+                            result != null &&
+                                result.startsWith('Report generated')
                             ? Colors.green
                             : Colors.red,
                       ),

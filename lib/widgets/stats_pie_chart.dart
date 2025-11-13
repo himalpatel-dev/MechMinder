@@ -13,7 +13,6 @@ class StatsPieChart extends StatefulWidget {
 class _StatsPieChartState extends State<StatsPieChart> {
   int touchedIndex = -1;
 
-  // A list of pre-defined colors for the chart
   final List<Color> _chartColors = [
     Colors.blue.shade400,
     Colors.red.shade400,
@@ -38,15 +37,19 @@ class _StatsPieChartState extends State<StatsPieChart> {
 
     return AspectRatio(
       aspectRatio: 1.2,
+      // --- THIS IS THE FIX ---
       child: Card(
-        elevation: 0,
-        color: Colors.white,
+        elevation: 4, // Add a standard elevation
+        // We REMOVE the hard-coded color.
+        // The card will now be white in Light Mode and dark gray in Dark Mode.
+        // color: const Color.fromARGB(255, 255, 255, 255), // <-- REMOVED
         child: Column(
           children: [
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Spending Breakdown',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              // Use a theme-aware text style
+              style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 20),
             Expanded(
@@ -75,7 +78,7 @@ class _StatsPieChartState extends State<StatsPieChart> {
               ),
             ),
             const SizedBox(height: 16),
-            // This builds the "legend" or key for the chart
+            // The legend
             Wrap(
               spacing: 8.0,
               runSpacing: 4.0,
@@ -86,11 +89,13 @@ class _StatsPieChartState extends State<StatsPieChart> {
           ],
         ),
       ),
+      // --- END OF FIX ---
     );
   }
 
-  // This function converts our data into chart sections
   List<PieChartSectionData> _buildChartSections(double totalValue) {
+    // (This function is unchanged, the white text with a shadow
+    // already looks good on both light and dark backgrounds)
     return List.generate(widget.spendingData.length, (i) {
       final isTouched = (i == touchedIndex);
       final fontSize = isTouched ? 16.0 : 12.0;
@@ -100,7 +105,7 @@ class _StatsPieChartState extends State<StatsPieChart> {
       final double percentage = (value / totalValue) * 100;
 
       return PieChartSectionData(
-        color: _chartColors[i % _chartColors.length], // Cycle through colors
+        color: _chartColors[i % _chartColors.length],
         value: value,
         title: '${percentage.toStringAsFixed(0)}%',
         radius: radius,
@@ -108,13 +113,18 @@ class _StatsPieChartState extends State<StatsPieChart> {
           fontSize: fontSize,
           fontWeight: FontWeight.bold,
           color: Colors.white,
+          // Add a shadow to make white text readable on light colors
+          shadows: [
+            Shadow(color: Colors.black.withOpacity(0.5), blurRadius: 2),
+          ],
         ),
       );
     });
   }
 
-  // This function builds the little colored squares for the legend
   List<Widget> _buildChartLegend() {
+    // (This function is unchanged, the default text color
+    // will be handled by the theme)
     return List.generate(widget.spendingData.length, (i) {
       final item = widget.spendingData[i];
       final String category = item[DatabaseHelper.columnCategory];

@@ -83,7 +83,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           isScrollable: true, // Keep it scrollable for 6 items
           // --- NEW PROPERTIES ---
           indicatorWeight: 4.0, // Make the line thicker
-          unselectedLabelColor: Colors.black54, // Fades out inactive tabs
+          // unselectedLabelColor: Colors.black54, // Fades out inactive tabs
           labelStyle: const TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 15,

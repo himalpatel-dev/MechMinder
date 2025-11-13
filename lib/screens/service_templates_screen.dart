@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
+import 'package:provider/provider.dart'; // --- THIS IS THE FIX ---
+import '../service/settings_provider.dart'; // --- THIS IS THE FIX ---
 
 class ServiceTemplatesScreen extends StatefulWidget {
   const ServiceTemplatesScreen({super.key});
@@ -13,7 +15,7 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _templates = [];
 
-  // Controllers for the Add/Edit dialog
+  // (Controllers are unchanged)
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _daysController = TextEditingController();
   final TextEditingController _kmController = TextEditingController();
@@ -31,21 +33,17 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     });
   }
 
-  // --- THIS FUNCTION IS NOW UPGRADED ---
-  // It can now handle both ADDING (template == null)
-  // and EDITING (template != null)
+  // (This function is unchanged)
   void _showAddEditTemplateDialog({Map<String, dynamic>? template}) {
     bool isEditing = template != null;
 
     if (isEditing) {
-      // Pre-fill controllers for editing
       _nameController.text = template[DatabaseHelper.columnName] ?? '';
       _daysController.text = (template[DatabaseHelper.columnIntervalDays] ?? '')
           .toString();
       _kmController.text = (template[DatabaseHelper.columnIntervalKm] ?? '')
           .toString();
     } else {
-      // Clear for adding
       _nameController.text = '';
       _daysController.text = '';
       _kmController.text = '';
@@ -79,11 +77,10 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
             ],
           ),
           actions: [
-            // --- ADD DELETE BUTTON (only for editing) ---
             if (isEditing)
               TextButton(
                 onPressed: () {
-                  Navigator.of(context).pop(); // Close the edit dialog
+                  Navigator.of(context).pop();
                   _showDeleteConfirmation(template[DatabaseHelper.columnId]);
                 },
                 child: const Text(
@@ -91,14 +88,14 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
                   style: TextStyle(color: Colors.red),
                 ),
               ),
-            const Spacer(), // Pushes buttons to the right
+            const Spacer(),
             TextButton(
               onPressed: () => Navigator.of(context).pop(),
               child: const Text('Cancel'),
             ),
             ElevatedButton(
               onPressed: () {
-                _saveTemplate(template); // Pass the template to save
+                _saveTemplate(template);
                 Navigator.of(context).pop();
               },
               child: const Text('Save'),
@@ -109,7 +106,7 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     );
   }
 
-  // --- THIS FUNCTION IS ALSO UPGRADED ---
+  // (This function is unchanged)
   void _saveTemplate(Map<String, dynamic>? template) async {
     bool isEditing = template != null;
 
@@ -126,10 +123,10 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
       await dbHelper.insertServiceTemplate(row);
     }
 
-    _refreshTemplateList(); // Refresh the list
+    _refreshTemplateList();
   }
 
-  // --- NEW FUNCTION: DELETE CONFIRMATION ---
+  // (This function is unchanged)
   void _showDeleteConfirmation(int id) {
     showDialog(
       context: context,
@@ -145,13 +142,13 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.black,
+              backgroundColor: Colors.red,
+              // foregroundColor: ... (removed)
             ),
             onPressed: () async {
               await dbHelper.deleteServiceTemplate(id);
               Navigator.of(ctx).pop();
-              _refreshTemplateList(); // Refresh the list
+              _refreshTemplateList();
             },
             child: const Text('Delete'),
           ),
@@ -162,17 +159,21 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // --- THIS IS THE FIX ---
+    // Get the settings provider
+    final settings = Provider.of<SettingsProvider>(context);
+    // --- END OF FIX ---
+
     return Scaffold(
       appBar: AppBar(title: const Text('Manage Service Templates')),
       body: _templates.isEmpty
           ? const Center(child: Text('No templates found. Tap "+" to add one.'))
           : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 80), // For the button
+              padding: const EdgeInsets.only(bottom: 80),
               itemCount: _templates.length,
               itemBuilder: (context, index) {
                 final template = _templates[index];
 
-                // --- THIS IS THE NEW REDESIGNED TILE ---
                 return Card(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 10,
@@ -180,11 +181,14 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
                   ),
                   elevation: 2,
                   child: ListTile(
-                    leading: const Icon(
+                    // --- THIS IS THE FIX ---
+                    // Use the dynamic color from settings
+                    leading: Icon(
                       Icons.list_alt,
-                      color: Colors.blue,
+                      color: settings.primaryColor,
                       size: 36,
                     ),
+                    // --- END OF FIX ---
                     title: Text(
                       template[DatabaseHelper.columnName],
                       style: const TextStyle(
@@ -193,24 +197,21 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
                       ),
                     ),
                     subtitle: Text(
-                      'Interval: ${template[DatabaseHelper.columnIntervalDays] ?? 'N/A'} days / ${template[DatabaseHelper.columnIntervalKm] ?? 'N/A'} km',
+                      'Interval: ${template[DatabaseHelper.columnIntervalDays] ?? 'N/A'} days / ${template[DatabaseHelper.columnIntervalKm] ?? 'N/A'} ${settings.unitType}',
                     ),
                     trailing: Icon(
                       Icons.chevron_right,
                       color: Colors.grey[400],
                     ),
                     onTap: () {
-                      // This now opens the "Edit" dialog
                       _showAddEditTemplateDialog(template: template);
                     },
                   ),
                 );
-                // --- END OF NEW TILE ---
               },
             ),
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          // This now opens the "Add" dialog
           _showAddEditTemplateDialog(template: null);
         },
         child: const Icon(Icons.add),
