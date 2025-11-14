@@ -18,6 +18,8 @@ class _OverviewTabState extends State<OverviewTab> {
   final dbHelper = DatabaseHelper.instance;
   final TextEditingController _odometerController = TextEditingController();
 
+  // ignore: unused_field
+  Map<String, dynamic>? _vehicle;
   Map<String, dynamic>? _nextDueDateReminder;
   Map<String, dynamic>? _nextOdometerReminder;
   List<Map<String, dynamic>> _vehiclePhotos = [];
@@ -32,24 +34,69 @@ class _OverviewTabState extends State<OverviewTab> {
   }
 
   Future<void> _loadData() async {
-    // (This function is unchanged)
     try {
+      // 1. Get all data in parallel
       final data = await Future.wait([
         dbHelper.queryVehicleById(widget.vehicleId),
-        dbHelper.queryNextDueSummary(widget.vehicleId),
+        dbHelper.queryRemindersForVehicle(
+          widget.vehicleId,
+        ), // <-- Use the correct function
         dbHelper.queryPhotosForParent(widget.vehicleId, 'vehicle'),
       ]);
+
       final vehicleData = data[0] as Map<String, dynamic>?;
-      final summary = data[1] as Map<String, Map<String, dynamic>?>;
+      final allReminders = data[1] as List<Map<String, dynamic>>;
       final photos = data[2] as List<Map<String, dynamic>>;
+
       if (vehicleData == null) {
         throw Exception("Vehicle data not found (ID: ${widget.vehicleId})");
       }
+
+      // --- 2. Process the reminders (the correct logic) ---
+      final String today = DateTime.now().toIso8601String().split('T')[0];
+      Map<String, dynamic>? nextDateRem;
+      Map<String, dynamic>? nextOdoRem;
+
+      // Find the *closest* date-based reminder
+      allReminders
+          .where(
+            (r) =>
+                r[DatabaseHelper.columnDueDate] != null &&
+                r[DatabaseHelper.columnDueDate].compareTo(today) >= 0,
+          )
+          .forEach((r) {
+            if (nextDateRem == null ||
+                r[DatabaseHelper.columnDueDate].compareTo(
+                      nextDateRem![DatabaseHelper.columnDueDate],
+                    ) <
+                    0) {
+              nextDateRem = r;
+            }
+          });
+
+      // Find the *closest* odo-based reminder
+      int currentOdo = vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0;
+      allReminders
+          .where(
+            (r) =>
+                r[DatabaseHelper.columnDueOdometer] != null &&
+                r[DatabaseHelper.columnDueOdometer] >= currentOdo,
+          )
+          .forEach((r) {
+            if (nextOdoRem == null ||
+                r[DatabaseHelper.columnDueOdometer] <
+                    nextOdoRem![DatabaseHelper.columnDueOdometer]) {
+              nextOdoRem = r;
+            }
+          });
+      // --- End of processing ---
+
       setState(() {
+        _vehicle = vehicleData;
         _odometerController.text =
             (vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0).toString();
-        _nextDueDateReminder = summary['nextByDate'];
-        _nextOdometerReminder = summary['nextByOdometer'];
+        _nextDueDateReminder = nextDateRem;
+        _nextOdometerReminder = nextOdoRem;
         _vehiclePhotos = List.from(photos);
         _isLoading = false;
         _errorMessage = null;

@@ -1,61 +1,18 @@
 import 'package:flutter/material.dart';
-import 'screens/home_screen.dart';
-import 'package:mechminder/service/database_helper.dart';
-import 'package:mechminder/service/notification_service.dart';
-import 'package:workmanager/workmanager.dart';
-import 'package:provider/provider.dart';  
+import 'package:mechminder/widgets/splash_screen.dart'; // <-- NEW: Start on Splash Screen
+import 'package:provider/provider.dart';
 import 'service/settings_provider.dart';
 
-@pragma('vm:entry-point')
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    print("--- Background Task Started ---");
+// --- REMOVED ALL OTHER IMPORTS (like workmanager, database, etc.) ---
 
-    await DatabaseHelper.instance.database;
-    await NotificationService().initialize();
-
-    final String today = DateTime.now().toIso8601String().split('T')[0];
-    print("Checking for reminders due on: $today");
-
-    final reminders = await DatabaseHelper.instance.queryRemindersDueOn(today);
-    print("Found ${reminders.length} reminders due today.");
-
-    for (final reminder in reminders) {
-      final String appName = inputData?['appName'] ?? 'MechMinder';
-      final serviceName = reminder['template_name'] ?? 'Service';
-      final body = 'Your "$serviceName" service is due today!';
-
-      await NotificationService().showImmediateReminder(
-        id: reminder[DatabaseHelper.columnId],
-        title: appName,
-        body: body,
-      );
-    }
-
-    print("--- Background Task Complete ---");
-    return Future.value(true);
-  });
-}
+// --- REMOVED callbackDispatcher() ---
+// (We will move this to the splash screen)
 
 Future<void> main() async {
-  // (Your main function is unchanged)
+  // 1. Ensure all Flutter bindings are ready
   WidgetsFlutterBinding.ensureInitialized();
 
-  await DatabaseHelper.instance.database;
-  print("[Main] Database is initialized and ready.");
-
-  await NotificationService().initialize();
-  await NotificationService().requestPermissions();
-
-  await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
-
-  await Workmanager().registerPeriodicTask(
-    "1",
-    "checkVehicleReminders",
-    frequency: const Duration(days: 1),
-    initialDelay: const Duration(minutes: 15),
-  );
-
+  // 3. Run the app
   runApp(
     ChangeNotifierProvider(
       create: (context) => SettingsProvider(),
@@ -73,28 +30,12 @@ class MyApp extends StatelessWidget {
       builder: (context, settings, child) {
         final Color myAppColor = settings.primaryColor;
 
-        // --- THIS IS THE FIX ---
-        // We define the bordered style here
-        final MenuStyle borderedMenuStyle = MenuStyle(
-          shape: MaterialStateProperty.all(
-            RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(8.0),
-              side: BorderSide(
-                // Use a subtle border color that works in both themes
-                color: Colors.grey.withOpacity(0.5),
-                width: 1,
-              ),
-            ),
-          ),
-        );
-        // --- END OF FIX ---
-
         return MaterialApp(
           title: 'MechMinder',
           debugShowCheckedModeBanner: false,
           themeMode: settings.themeMode,
 
-          // --- 2. DEFINE THE LIGHT THEME ---
+          // (Light Theme is unchanged)
           theme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.light,
@@ -102,17 +43,24 @@ class MyApp extends StatelessWidget {
               seedColor: myAppColor,
               brightness: Brightness.light,
             ),
-            // --- ADD THIS ---
             dropdownMenuTheme: DropdownMenuThemeData(
-              menuStyle: borderedMenuStyle.copyWith(
+              menuStyle: MenuStyle(
+                shape: MaterialStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    side: BorderSide(
+                      color: Colors.grey.withOpacity(0.5),
+                      width: 1,
+                    ),
+                  ),
+                ),
                 backgroundColor: MaterialStateProperty.all(Colors.white),
                 surfaceTintColor: MaterialStateProperty.all(Colors.white),
               ),
             ),
-            // --- END ADD ---
           ),
 
-          // --- 3. DEFINE THE DARK THEME ---
+          // (Dark Theme is unchanged)
           darkTheme: ThemeData(
             useMaterial3: true,
             brightness: Brightness.dark,
@@ -120,16 +68,18 @@ class MyApp extends StatelessWidget {
               seedColor: myAppColor,
               brightness: Brightness.dark,
             ),
-
-            // --- ADD THIS ---
             dropdownMenuTheme: DropdownMenuThemeData(
-              menuStyle: borderedMenuStyle.copyWith(
+              menuStyle: MenuStyle(
                 backgroundColor: MaterialStateProperty.all(Colors.grey[800]),
                 surfaceTintColor: MaterialStateProperty.all(Colors.grey[800]),
+                shape: MaterialStateProperty.all(
+                  RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8.0),
+                    side: BorderSide(color: Colors.grey[600]!, width: 1),
+                  ),
+                ),
               ),
             ),
-
-            // --- END ADD ---
             elevatedButtonTheme: ElevatedButtonThemeData(
               style: ElevatedButton.styleFrom(
                 backgroundColor: myAppColor,
@@ -142,7 +92,8 @@ class MyApp extends StatelessWidget {
             ),
           ),
 
-          home: const HomeScreen(),
+          // --- FIX: Start on the SplashScreen ---
+          home: const SplashScreen(),
         );
       },
     );

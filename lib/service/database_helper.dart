@@ -893,4 +893,26 @@ class DatabaseHelper {
 
     return await db.rawQuery(sql, [vehicleId]);
   }
+
+  Future<List<Map<String, dynamic>>> queryAllRemindersGroupedByVehicle() async {
+    Database db = await instance.database;
+
+    // This query gets all reminders, joins the vehicle name,
+    // and joins the template name (if it exists)
+    final String sql =
+        '''
+      SELECT 
+        r.*,
+        v.$columnMake, 
+        v.$columnModel,
+        v.$columnCurrentOdometer, 
+        t.$columnName AS template_name
+      FROM $tableReminders r
+      JOIN $tableVehicles v ON v.$columnId = r.$columnVehicleId
+      LEFT JOIN $tableServiceTemplates t ON t.$columnId = r.$columnTemplateId
+      ORDER BY v.$columnMake, v.$columnModel, r.$columnDueDate ASC, r.$columnDueOdometer ASC
+    ''';
+
+    return await db.rawQuery(sql);
+  }
 }

@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
-import '../service/database_helper.dart'; // Make sure this path is correct
-import 'package:provider/provider.dart'; // --- THIS IS THE FIX ---
-import '../service/settings_provider.dart'; // --- THIS IS THE FIX ---
+import '../service/database_helper.dart';
+import 'package:provider/provider.dart';
+import '../service/settings_provider.dart';
 
 class VendorListScreen extends StatefulWidget {
+  // We accept a key
   const VendorListScreen({super.key});
 
   @override
+  // --- FIX 1: Public State Class ---
   State<VendorListScreen> createState() => VendorListScreenState();
 }
 
+// --- FIX 1: Public State Class ---
 class VendorListScreenState extends State<VendorListScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _vendors = [];
 
-  // (Controllers are unchanged)
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _addressController = TextEditingController();
@@ -22,9 +24,10 @@ class VendorListScreenState extends State<VendorListScreen> {
   @override
   void initState() {
     super.initState();
-    refreshVendorList();
+    refreshVendorList(); // Use public name
   }
 
+  // --- FIX 2: Public Method (No underscore) ---
   Future<void> refreshVendorList() async {
     final allVendors = await dbHelper.queryAllVendors();
     setState(() {
@@ -32,7 +35,7 @@ class VendorListScreenState extends State<VendorListScreen> {
     });
   }
 
-  // (This function is unchanged)
+  // --- FIX 2: Public Method (No underscore) ---
   void showAddEditVendorDialog({Map<String, dynamic>? vendor}) {
     bool isEditing = vendor != null;
 
@@ -50,13 +53,13 @@ class VendorListScreenState extends State<VendorListScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(isEditing ? 'Edit Workshop' : 'Add New Workshop'),
+          title: Text(isEditing ? 'Edit Vendor' : 'Add New Vendor'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Workshop Name'),
+                decoration: const InputDecoration(labelText: 'Vendor Name'),
                 autofocus: true,
               ),
               TextField(
@@ -100,7 +103,6 @@ class VendorListScreenState extends State<VendorListScreen> {
     );
   }
 
-  // (This function is unchanged)
   void _saveVendor(Map<String, dynamic>? vendor) async {
     bool isEditing = vendor != null;
     Map<String, dynamic> row = {
@@ -116,18 +118,16 @@ class VendorListScreenState extends State<VendorListScreen> {
       await dbHelper.insertVendor(row);
     }
 
-    refreshVendorList();
+    refreshVendorList(); // Use public name
   }
 
-  // (This function is unchanged)
   void _showDeleteConfirmation(int id) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Workshop?'),
+        title: const Text('Delete Vendor?'),
         content: const Text(
-          'Are you sure you want to permanently delete this Workshop? This cannot be undone.',
-          // style: ... (removed)
+          'Are you sure you want to permanently delete this vendor? This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -135,14 +135,11 @@ class VendorListScreenState extends State<VendorListScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              // foregroundColor: ... (removed)
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               await dbHelper.deleteVendor(id);
               Navigator.of(ctx).pop();
-              refreshVendorList();
+              refreshVendorList(); // Use public name
             },
             child: const Text('Delete'),
           ),
@@ -153,56 +150,86 @@ class VendorListScreenState extends State<VendorListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // --- THIS IS THE FIX ---
-    // Get the settings provider
     final settings = Provider.of<SettingsProvider>(context);
-    // --- END OF FIX ---
 
     return _vendors.isEmpty
-          ? const Center(
-              child: Text('No Workshop added yet. Tap "+" to add one.'),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 80),
-              itemCount: _vendors.length,
-              itemBuilder: (context, index) {
-                final vendor = _vendors[index];
+        ? const Center(child: Text('No vendors added yet. Tap "+" to add one.'))
+        : ListView.builder(
+            padding: const EdgeInsets.only(bottom: 80),
+            itemCount: _vendors.length,
+            itemBuilder: (context, index) {
+              final vendor = _vendors[index];
 
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
+              return Card(
+                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                elevation: 2,
+                clipBehavior: Clip.antiAlias,
+                child: InkWell(
+                  onTap: () {
+                    // --- FIX 3: Call the public method ---
+                    showAddEditVendorDialog(vendor: vendor);
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16.0,
+                      vertical: 12.0,
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.store,
+                          color: settings.primaryColor,
+                          size: 30,
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                vendor[DatabaseHelper.columnName],
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              _buildIconRow(
+                                Icons.phone,
+                                vendor[DatabaseHelper.columnPhone] ?? 'N/A',
+                              ),
+                              const SizedBox(height: 2),
+                              _buildIconRow(
+                                Icons.location_on,
+                                vendor[DatabaseHelper.columnAddress] ?? 'N/A',
+                              ),
+                            ],
+                          ),
+                        ),
+                        Icon(Icons.chevron_right, color: Colors.grey[400]),
+                      ],
+                    ),
                   ),
-                  elevation: 2,
-                  child: ListTile(
-                    // --- THIS IS THE FIX ---
-                    // Use the dynamic color from settings
-                    leading: Icon(
-                      Icons.store,
-                      color: settings.primaryColor,
-                      size: 36,
-                    ),
-                    // --- END OF FIX ---
-                    title: Text(
-                      vendor[DatabaseHelper.columnName],
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Phone: ${vendor[DatabaseHelper.columnPhone] ?? 'N/A'}\nAddress: ${vendor[DatabaseHelper.columnAddress] ?? 'N/A'}',
-                    ), 
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: Colors.grey[400],
-                    ),
-                    onTap: () {
-                      showAddEditVendorDialog(vendor: vendor);
-                    },
-                  ),
-                );
-              },
-            );
+                ),
+              );
+            },
+          );
+  }
+
+  Widget _buildIconRow(IconData icon, String text) {
+    return Row(
+      children: [
+        Icon(icon, size: 14, color: Colors.grey[600]),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
+          ),
+        ),
+      ],
+    );
   }
 }
