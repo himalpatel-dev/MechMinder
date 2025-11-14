@@ -269,9 +269,9 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
     );
   }
 
+  // --- THIS IS THE UPDATED BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
-    // (This function is unchanged)
     final settings = Provider.of<SettingsProvider>(context);
     final sortedVehicleNames = _groupedReminders.keys.toList()..sort();
 
@@ -296,8 +296,8 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                     remindersForVehicle.first[DatabaseHelper
                         .columnCurrentOdometer] ??
                     0;
-                final List<Map<String, dynamic>> overdue = [];
-                final List<Map<String, dynamic>> comingSoon = [];
+                int overdueCount = 0;
+                int upcomingCount = 0;
                 final String today = DateTime.now().toIso8601String().split(
                   'T',
                 )[0];
@@ -316,118 +316,160 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                     isOdoOverdue = true;
                   }
                   if (isDateOverdue || isOdoOverdue) {
-                    overdue.add(reminder);
+                    overdueCount++;
                   } else {
-                    comingSoon.add(reminder);
+                    upcomingCount++;
                   }
                 }
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildVehicleHeader(
-                      vehicleName,
-                      overdue.length,
-                      comingSoon.length,
+                // --- THIS IS THE FIX ---
+                // We use a Container to create the border and shadow,
+                // and a Material widget inside for the ripple effect.
+                return Container(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  clipBehavior:
+                      Clip.antiAlias, // Clips the ExpansionTile's corners
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border(
+                      left: BorderSide(
+                        color: settings.primaryColor, // Your theme color
+                        width: 5, // The border width
+                      ),
                     ),
-                    ...overdue
-                        .map(
-                          (r) =>
-                              _buildReminderCard(r, settings, isOverdue: true),
-                        )
-                        .toList(),
-                    ...comingSoon
-                        .map((r) => _buildReminderCard(r, settings))
-                        .toList(),
-                    const SizedBox(height: 16),
-                  ],
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ExpansionTile(
+                    shape: const Border(),
+                    collapsedShape: const Border(),
+
+                    title: _buildVehicleHeader(
+                      vehicleName,
+                      overdueCount,
+                      upcomingCount,
+                    ),
+                    tilePadding: const EdgeInsets.only(
+                      left: 16.0,
+                      right: 8.0,
+                    ), // Adjust padding
+                    initiallyExpanded: false,
+                    trailing: const SizedBox.shrink(),
+                    // The children (reminders)
+                    children: remindersForVehicle.map((reminder) {
+                      bool isOverdue = false;
+                      final String? dueDate =
+                          reminder[DatabaseHelper.columnDueDate];
+                      if (dueDate != null && dueDate.compareTo(today) < 0) {
+                        isOverdue = true;
+                      }
+                      final int? dueOdo =
+                          reminder[DatabaseHelper.columnDueOdometer];
+                      if (dueOdo != null && currentOdo >= dueOdo) {
+                        isOverdue = true;
+                      }
+                      return _buildReminderCard(
+                        reminder,
+                        settings,
+                        isOverdue: isOverdue,
+                      );
+                    }).toList(),
+                  ),
                 );
+                // --- END OF FIX ---
               },
             ),
     );
   }
 
-  // --- THIS IS THE UPDATED VEHICLE HEADER ---
+  // (This helper is unchanged)
   Widget _buildVehicleHeader(
     String vehicleName,
     int overdueCount,
     int upcomingCount,
   ) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment:
-            CrossAxisAlignment.center, // Vertically center items
-        children: [
-          // Vehicle Name
-          Expanded(
-            child: Text(
-              vehicleName,
-              style: Theme.of(
-                context,
-              ).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
-              overflow: TextOverflow.ellipsis,
-            ),
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        // --- THIS IS THE FIX ---
+        // 1. Wrap the Text in an Expanded widget.
+        // This makes it take all available space on the left.
+        Expanded(
+          child: Text(
+            vehicleName,
+            style: Theme.of(
+              context,
+            ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+            overflow: TextOverflow.ellipsis, // This will add "..."
+            maxLines: 1, // Ensure it's only one line
           ),
+        ),
+        // --- END OF FIX ---
 
-          // --- THIS IS THE FIX: A Row for the two chips ---
-          Row(
-            children: [
-              // 1. Overdue Chip (only if overdue > 0)
-              if (overdueCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.red[100], // Light red background
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    "$overdueCount OVERDUE",
-                    style: TextStyle(
-                      color: Colors.red[900], // Dark red text
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
+        // 2. Add a small space between the text and the chips
+        const SizedBox(width: 8),
+
+        // 3. This Row of chips will now be pushed to the right.
+        Row(
+          mainAxisSize: MainAxisSize.min, // Takes only the space it needs
+          children: [
+            if (overdueCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.red[100],
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "$overdueCount OVERDUE",
+                  style: TextStyle(
+                    color: Colors.red[900],
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
+              ),
 
-              // Add spacing if both chips are present
-              if (overdueCount > 0 && upcomingCount > 0)
-                const SizedBox(width: 6),
+            if (overdueCount > 0 && upcomingCount > 0) const SizedBox(width: 6),
 
-              // 2. Upcoming Chip (only if upcoming > 0)
-              if (upcomingCount > 0)
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    "$upcomingCount Upcoming",
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.onPrimaryContainer,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
+            if (upcomingCount > 0)
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  "$upcomingCount Upcoming",
+                  style: TextStyle(
+                    color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
-            ],
-          ),
-          // --- END OF FIX ---
-        ],
-      ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 
-  // --- (This helper is unchanged) ---
+  // --- (Helper for the Reminder Card - UNCHANGED) ---
   Widget _buildReminderCard(
     Map<String, dynamic> reminder,
     SettingsProvider settings, {
@@ -441,15 +483,16 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
         reminder[DatabaseHelper.columnNotes] ??
         'Reminder';
 
+    // The child cards should be standard cards
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       elevation: 2,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
         child: Row(
           children: [
             Icon(
-              Icons.notifications_active,
+              Icons.warning_amber_rounded,
               color: isOverdue ? Colors.red[700] : Colors.orange[700],
               size: 30,
             ),
@@ -469,7 +512,10 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                   const SizedBox(height: 6),
                   Text(
                     'Due: $dueDate   |   $dueOdo ${settings.unitType}',
-                    style: TextStyle(fontSize: 13, color: Colors.grey[800]),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: Theme.of(context).textTheme.bodySmall?.color,
+                    ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),

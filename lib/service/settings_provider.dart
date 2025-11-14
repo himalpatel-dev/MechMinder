@@ -34,25 +34,22 @@ class SettingsProvider with ChangeNotifier {
     _unitType = _prefs?.getString(_keyUnit) ?? 'km';
     _currencySymbol = _prefs?.getString(_keyCurrency) ?? '₹';
 
-    // (Load Theme)
-    final String themeName = _prefs?.getString(_keyTheme) ?? 'system';
-    if (themeName == 'light') {
-      _themeMode = ThemeMode.light;
-    } else if (themeName == 'dark') {
+    // --- FIX: Simplified theme loading ---
+    // Default to 'light' if no setting is saved
+    final String themeName = _prefs?.getString(_keyTheme) ?? 'light';
+    if (themeName == 'dark') {
       _themeMode = ThemeMode.dark;
     } else {
-      _themeMode = ThemeMode.system;
+      _themeMode = ThemeMode.light;
     }
+    // --- END FIX ---
 
-    // --- NEW: Load the saved color ---
-    // We save the color as an integer (e.g., 0xFF4CAF50)
     int? savedColorInt = _prefs?.getInt(_keyColor);
     if (savedColorInt != null) {
       _primaryColor = Color(savedColorInt);
     } else {
-      _primaryColor = Colors.blue; // Default
+      _primaryColor = Colors.blue;
     }
-    // --- END NEW ---
 
     notifyListeners();
   }
@@ -75,17 +72,15 @@ class SettingsProvider with ChangeNotifier {
   }
 
   Future<void> updateThemeMode(ThemeMode newThemeMode) async {
-    // (This function is unchanged)
     if (_prefs == null) await _loadSettings();
-    _themeMode = newThemeMode;
-    String themeName;
-    if (newThemeMode == ThemeMode.light) {
-      themeName = 'light';
-    } else if (newThemeMode == ThemeMode.dark) {
-      themeName = 'dark';
-    } else {
-      themeName = 'system';
-    }
+
+    // We only care about light or dark now
+    _themeMode = newThemeMode == ThemeMode.dark
+        ? ThemeMode.dark
+        : ThemeMode.light;
+
+    String themeName = (newThemeMode == ThemeMode.dark) ? 'dark' : 'light';
+
     await _prefs!.setString(_keyTheme, themeName);
     notifyListeners();
   }
@@ -93,9 +88,7 @@ class SettingsProvider with ChangeNotifier {
   // --- NEW: Function to change and save the color ---
   Future<void> updatePrimaryColor(Color newColor) async {
     if (_prefs == null) await _loadSettings();
-
     _primaryColor = newColor;
-    // Save the color as its integer value
     await _prefs!.setInt(_keyColor, newColor.value);
     notifyListeners();
   }

@@ -424,7 +424,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
 
       // 2. Find reminders TO ADD (based on parts list)
       final remindersToAdd = newTemplateIdsUsed.toSet();
-      print("[DEBUG] Reminders TO ADD (Template IDs): $remindersToAdd");
+      print("[DEBUG] Reminders TO ADD (Auto Part IDs): $remindersToAdd");
 
       if (remindersToAdd.isNotEmpty) {
         for (int templateIdToAdd in remindersToAdd) {
@@ -579,7 +579,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                                 Expanded(
                                   child: DropdownButtonFormField<int>(
                                     value: _selectedTemplateId,
-                                    hint: const Text('Add part from AutoSet'),
+                                    hint: const Text('Add from Auto Parts'),
                                     decoration: InputDecoration(
                                       border: fieldBorder,
                                       filled: true,
@@ -612,7 +612,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                                     color: Colors.green,
                                     size: 30,
                                   ),
-                                  tooltip: 'Add selected AutoSet',
+                                  tooltip: 'Add selected AutoParts item',
                                   onPressed: _addPartFromTemplate,
                                 ),
                               ],

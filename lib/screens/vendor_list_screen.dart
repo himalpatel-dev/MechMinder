@@ -4,16 +4,16 @@ import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
 
 class VendorListScreen extends StatefulWidget {
-  // We accept a key
+  // We no longer need the key or vehicleId
   const VendorListScreen({super.key});
 
   @override
-  // --- FIX 1: Public State Class ---
-  State<VendorListScreen> createState() => VendorListScreenState();
+  // --- Back to a private State class ---
+  State<VendorListScreen> createState() => _VendorListScreenState();
 }
 
-// --- FIX 1: Public State Class ---
-class VendorListScreenState extends State<VendorListScreen> {
+// --- Back to a private State class ---
+class _VendorListScreenState extends State<VendorListScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _vendors = [];
 
@@ -24,19 +24,19 @@ class VendorListScreenState extends State<VendorListScreen> {
   @override
   void initState() {
     super.initState();
-    refreshVendorList(); // Use public name
+    _refreshVendorList();
   }
 
-  // --- FIX 2: Public Method (No underscore) ---
-  Future<void> refreshVendorList() async {
+  // --- Back to a private method ---
+  Future<void> _refreshVendorList() async {
     final allVendors = await dbHelper.queryAllVendors();
     setState(() {
       _vendors = allVendors;
     });
   }
 
-  // --- FIX 2: Public Method (No underscore) ---
-  void showAddEditVendorDialog({Map<String, dynamic>? vendor}) {
+  // --- Back to a private method ---
+  void _showAddEditVendorDialog({Map<String, dynamic>? vendor}) {
     bool isEditing = vendor != null;
 
     if (isEditing) {
@@ -53,13 +53,13 @@ class VendorListScreenState extends State<VendorListScreen> {
       context: context,
       builder: (context) {
         return AlertDialog(
-          title: Text(isEditing ? 'Edit Vendor' : 'Add New Vendor'),
+          title: Text(isEditing ? 'Edit Workshop' : 'Add New Workshop'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               TextField(
                 controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Vendor Name'),
+                decoration: const InputDecoration(labelText: 'Workshop Name'),
                 autofocus: true,
               ),
               TextField(
@@ -118,16 +118,16 @@ class VendorListScreenState extends State<VendorListScreen> {
       await dbHelper.insertVendor(row);
     }
 
-    refreshVendorList(); // Use public name
+    _refreshVendorList();
   }
 
   void _showDeleteConfirmation(int id) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete Vendor?'),
+        title: const Text('Delete Workshop?'),
         content: const Text(
-          'Are you sure you want to permanently delete this vendor? This cannot be undone.',
+          'Are you sure you want to permanently delete this Workshop? This cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -139,7 +139,7 @@ class VendorListScreenState extends State<VendorListScreen> {
             onPressed: () async {
               await dbHelper.deleteVendor(id);
               Navigator.of(ctx).pop();
-              refreshVendorList(); // Use public name
+              _refreshVendorList();
             },
             child: const Text('Delete'),
           ),
@@ -152,68 +152,86 @@ class VendorListScreenState extends State<VendorListScreen> {
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
 
-    return _vendors.isEmpty
-        ? const Center(child: Text('No vendors added yet. Tap "+" to add one.'))
-        : ListView.builder(
-            padding: const EdgeInsets.only(bottom: 80),
-            itemCount: _vendors.length,
-            itemBuilder: (context, index) {
-              final vendor = _vendors[index];
+    // --- ADD Scaffold AND AppBar BACK ---
+    return Scaffold(
+      appBar: AppBar(title: const Text('Manage Workshops')),
+      // --- END ADD ---
+      body: _vendors.isEmpty
+          ? const Center(
+              child: Text('No Workshops added yet. Tap "+" to add one.'),
+            )
+          : ListView.builder(
+              padding: const EdgeInsets.only(bottom: 80),
+              itemCount: _vendors.length,
+              itemBuilder: (context, index) {
+                final vendor = _vendors[index];
 
-              return Card(
-                margin: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                elevation: 2,
-                clipBehavior: Clip.antiAlias,
-                child: InkWell(
-                  onTap: () {
-                    // --- FIX 3: Call the public method ---
-                    showAddEditVendorDialog(vendor: vendor);
-                  },
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16.0,
-                      vertical: 12.0,
-                    ),
-                    child: Row(
-                      children: [
-                        Icon(
-                          Icons.store,
-                          color: settings.primaryColor,
-                          size: 30,
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                vendor[DatabaseHelper.columnName],
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              _buildIconRow(
-                                Icons.phone,
-                                vendor[DatabaseHelper.columnPhone] ?? 'N/A',
-                              ),
-                              const SizedBox(height: 2),
-                              _buildIconRow(
-                                Icons.location_on,
-                                vendor[DatabaseHelper.columnAddress] ?? 'N/A',
-                              ),
-                            ],
+                return Card(
+                  margin: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  elevation: 2,
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () {
+                      // --- Call private method ---
+                      _showAddEditVendorDialog(vendor: vendor);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16.0,
+                        vertical: 12.0,
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.store,
+                            color: settings.primaryColor,
+                            size: 30,
                           ),
-                        ),
-                        Icon(Icons.chevron_right, color: Colors.grey[400]),
-                      ],
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  vendor[DatabaseHelper.columnName],
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                _buildIconRow(
+                                  Icons.phone,
+                                  vendor[DatabaseHelper.columnPhone] ?? 'N/A',
+                                ),
+                                const SizedBox(height: 2),
+                                _buildIconRow(
+                                  Icons.location_on,
+                                  vendor[DatabaseHelper.columnAddress] ?? 'N/A',
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(Icons.chevron_right, color: Colors.grey[400]),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              );
-            },
-          );
+                );
+              },
+            ),
+      // --- ADD FloatingActionButton BACK ---
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          _showAddEditVendorDialog(vendor: null);
+        },
+        child: const Icon(Icons.add),
+      ),
+      // --- END ADD ---
+    );
   }
 
   Widget _buildIconRow(IconData icon, String text) {

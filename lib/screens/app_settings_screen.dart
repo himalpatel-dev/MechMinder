@@ -302,152 +302,85 @@ class AppSettingsScreen extends StatelessWidget {
     );
   }
 
-  // --- NEW: FUNCTION TO SHOW THEME DIALOG ---
-  void _showThemeDialog(BuildContext context, SettingsProvider settings) {
-    showDialog(
-      context: context,
-      builder: (BuildContext ctx) {
-        return SimpleDialog(
-          title: const Text('Select Theme'),
-          children: [
-            RadioListTile<ThemeMode>(
-              title: const Text('System Default'),
-              value: ThemeMode.system,
-              groupValue: settings.themeMode,
-              onChanged: (ThemeMode? value) {
-                if (value != null) {
-                  settings.updateThemeMode(value);
-                }
-                Navigator.of(ctx).pop();
-              },
-            ),
-            RadioListTile<ThemeMode>(
-              title: const Text('Light Mode'),
-              value: ThemeMode.light,
-              groupValue: settings.themeMode,
-              onChanged: (ThemeMode? value) {
-                if (value != null) {
-                  settings.updateThemeMode(value);
-                }
-                Navigator.of(ctx).pop();
-              },
-            ),
-            RadioListTile<ThemeMode>(
-              title: const Text('Dark Mode'),
-              value: ThemeMode.dark,
-              groupValue: settings.themeMode,
-              onChanged: (ThemeMode? value) {
-                if (value != null) {
-                  settings.updateThemeMode(value);
-                }
-                Navigator.of(ctx).pop();
-              },
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // --- NEW: Helper to get the current theme name as text ---
-  String _getThemeName(ThemeMode themeMode) {
-    switch (themeMode) {
-      case ThemeMode.light:
-        return 'Light Mode';
-      case ThemeMode.dark:
-        return 'Dark Mode';
-      case ThemeMode.system:
-        return 'System Default';
-    }
-  }
-
   // --- UPDATED BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
     return Consumer<SettingsProvider>(
       builder: (context, settings, child) {
         return ListView(
-            children: [
-              // --- DATA MANAGEMENT (unchanged) ---
-              const ListTile(
-                title: Text(
-                  'Data Management',
-                  style: TextStyle(fontWeight: FontWeight.bold),
+          children: [
+            // --- DATA MANAGEMENT (unchanged) ---
+            const ListTile(
+              title: Text(
+                'Data Management',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.download_for_offline),
+              title: const Text('Export All Data'),
+              subtitle: const Text('Save all data to a JSON backup file'),
+              onTap: () => _exportDataAsJson(context),
+            ),
+            ListTile(
+              leading: const Icon(Icons.upload_file),
+              title: const Text('Import Data'),
+              subtitle: const Text('Restore from a JSON backup file'),
+              onTap: () => _importDataFromJson(context),
+            ),
+
+            const Divider(),
+
+            // --- PREFERENCES (UPDATED) ---
+            const ListTile(
+              title: Text(
+                'Preferences',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+
+            //Color Picker Tile
+            ListTile(
+              leading: Icon(Icons.color_lens, color: settings.primaryColor),
+              title: const Text('App Color'),
+              subtitle: const Text('Change the primary app color'),
+              trailing: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: settings.primaryColor,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: Colors.grey),
                 ),
               ),
-              ListTile(
-                leading: const Icon(Icons.download_for_offline),
-                title: const Text('Export All Data'),
-                subtitle: const Text('Save all data to a JSON backup file'),
-                onTap: () => _exportDataAsJson(context),
-              ),
-              ListTile(
-                leading: const Icon(Icons.upload_file),
-                title: const Text('Import Data'),
-                subtitle: const Text('Restore from a JSON backup file'),
-                onTap: () => _importDataFromJson(context),
-              ),
+              onTap: () {
+                _showColorPickerDialog(context, settings);
+              },
+            ),
 
-              const Divider(),
+            // --- NEW: THEME BUTTON ---
 
-              // --- PREFERENCES (UPDATED) ---
-              const ListTile(
-                title: Text(
-                  'Preferences',
-                  style: TextStyle(fontWeight: FontWeight.bold),
-                ),
+            // --- END NEW ---
+            ListTile(
+              leading: const Icon(Icons.straighten),
+              title: const Text('Units'),
+              subtitle: Text(
+                settings.unitType == 'km' ? 'Kilometers' : 'Miles',
               ),
-
-              //Color Picker Tile
-              ListTile(
-                leading: Icon(Icons.color_lens, color: settings.primaryColor),
-                title: const Text('App Color'),
-                subtitle: const Text('Change the primary app color'),
-                trailing: Container(
-                  width: 24,
-                  height: 24,
-                  decoration: BoxDecoration(
-                    color: settings.primaryColor,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey),
-                  ),
-                ),
-                onTap: () {
-                  _showColorPickerDialog(context, settings);
-                },
-              ),
-
-              // --- NEW: THEME BUTTON ---
-              ListTile(
-                leading: const Icon(Icons.brightness_6),
-                title: const Text('Theme'),
-                subtitle: Text(_getThemeName(settings.themeMode)),
-                onTap: () {
-                  _showThemeDialog(context, settings);
-                },
-              ),
-
-              // --- END NEW ---
-              ListTile(
-                leading: const Icon(Icons.straighten),
-                title: const Text('Units'),
-                subtitle: Text(
-                  settings.unitType == 'km' ? 'Kilometers' : 'Miles',
-                ),
-                onTap: () {
-                  _showUnitDialog(context, settings);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.attach_money),
-                title: const Text('Currency'),
-                subtitle: Text(settings.currencySymbol),
-                onTap: () {
-                  _showCurrencyDialog(context, settings);
-                },
-              ),
-            ],
-          );
+              onTap: () {
+                _showUnitDialog(context, settings);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.attach_money),
+              title: const Text('Currency'),
+              subtitle: Text(settings.currencySymbol),
+              onTap: () {
+                _showCurrencyDialog(context, settings);
+              },
+            ),
+          ],
+        );
       },
     );
   }
