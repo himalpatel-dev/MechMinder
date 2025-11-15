@@ -25,7 +25,7 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
   @override
   void initState() {
     super.initState();
-    _refreshReminderList();
+    refreshReminderList();
   }
 
   @override
@@ -36,7 +36,7 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
     super.dispose();
   }
 
-  Future<void> _refreshReminderList() async {
+  Future<void> refreshReminderList() async {
     // (This function is unchanged)
     final allReminders = await dbHelper.queryAllRemindersGroupedByVehicle();
     final Map<String, List<Map<String, dynamic>>> grouped = {};
@@ -124,7 +124,7 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
               if (mounted) {
                 Navigator.of(ctx).pop();
               }
-              _refreshReminderList();
+              refreshReminderList();
             },
             child: const Text('Snooze'),
           ),
@@ -256,7 +256,7 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                       if (mounted) {
                         Navigator.of(ctx).pop();
                       }
-                      _refreshReminderList();
+                      refreshReminderList();
                     }
                   },
                   child: const Text('Save Reminder'),
@@ -333,14 +333,14 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                   clipBehavior:
                       Clip.antiAlias, // Clips the ExpansionTile's corners
                   decoration: BoxDecoration(
-                    color: Theme.of(context).cardColor,
+                    color: Theme.of(context).scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(12),
-                    border: Border(
-                      left: BorderSide(
-                        color: settings.primaryColor, // Your theme color
-                        width: 5, // The border width
-                      ),
-                    ),
+                    // border: Border(
+                    //   left: BorderSide(
+                    //     color: settings.primaryColor, // Your theme color
+                    //     width: 5, // The border width
+                    //   ),
+                    // ),
                     boxShadow: [
                       BoxShadow(
                         color: Colors.black.withOpacity(0.1),
@@ -363,7 +363,6 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                       right: 8.0,
                     ), // Adjust padding
                     initiallyExpanded: false,
-                    trailing: const SizedBox.shrink(),
                     // The children (reminders)
                     children: remindersForVehicle.map((reminder) {
                       bool isOverdue = false;
@@ -487,67 +486,82 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
     return Card(
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
-        child: Row(
-          children: [
-            Icon(
-              Icons.warning_amber_rounded,
-              color: isOverdue ? Colors.red[700] : Colors.orange[700],
-              size: 30,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border(
+            left: BorderSide(
+              color: isOverdue ? Colors.red : Colors.orange,
+              width: 4,
             ),
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Due: $dueDate   |   $dueOdo ${settings.unitType}',
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Theme.of(context).textTheme.bodySmall?.color,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+          ),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
+          child: Row(
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: isOverdue ? Colors.red[700] : Colors.orange[700],
+                size: 30,
               ),
-            ),
+              const SizedBox(width: 12),
 
-            IconButton(
-              icon: Icon(Icons.snooze, color: Colors.blue[600]),
-              tooltip: 'Snooze Reminder',
-              onPressed: () {
-                _showSnoozeDialog(reminder, settings);
-              },
-            ),
-            IconButton(
-              icon: Icon(Icons.check_circle_outline, color: Colors.green[600]),
-              tooltip: 'Mark as Complete',
-              onPressed: () async {
-                int id = reminder[DatabaseHelper.columnId];
-                await dbHelper.deleteReminder(id);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Reminder marked as complete!'),
-                      backgroundColor: Colors.green,
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 16,
+                      ),
                     ),
-                  );
-                }
-                _refreshReminderList();
-              },
-            ),
-          ],
+                    const SizedBox(height: 6),
+                    Text(
+                      'Due: $dueDate   |   $dueOdo ${settings.unitType}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+
+              IconButton(
+                icon: Icon(Icons.snooze, color: Colors.blue[600]),
+                tooltip: 'Snooze Reminder',
+                onPressed: () {
+                  _showSnoozeDialog(reminder, settings);
+                },
+              ),
+
+              IconButton(
+                icon: Icon(
+                  Icons.check_circle_outline,
+                  color: Colors.green[600],
+                ),
+                tooltip: 'Mark as Complete',
+                onPressed: () async {
+                  int id = reminder[DatabaseHelper.columnId];
+                  await dbHelper.deleteReminder(id);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Reminder marked as complete!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                  refreshReminderList();
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );

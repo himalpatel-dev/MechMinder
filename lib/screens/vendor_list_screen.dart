@@ -151,7 +151,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
-
+    final Color myAppColor = settings.primaryColor;
     // --- ADD Scaffold AND AppBar BACK ---
     return Scaffold(
       appBar: AppBar(title: const Text('Manage Workshops')),
@@ -206,11 +206,13 @@ class _VendorListScreenState extends State<VendorListScreen> {
                                 _buildIconRow(
                                   Icons.phone,
                                   vendor[DatabaseHelper.columnPhone] ?? 'N/A',
+                                  myAppColor,
                                 ),
                                 const SizedBox(height: 2),
                                 _buildIconRow(
                                   Icons.location_on,
                                   vendor[DatabaseHelper.columnAddress] ?? 'N/A',
+                                  myAppColor,
                                 ),
                               ],
                             ),
@@ -234,15 +236,15 @@ class _VendorListScreenState extends State<VendorListScreen> {
     );
   }
 
-  Widget _buildIconRow(IconData icon, String text) {
+  Widget _buildIconRow(IconData icon, String text, Color primaryColor) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: Colors.grey[600]),
+        Icon(icon, size: 14, color: primaryColor),
         const SizedBox(width: 6),
         Expanded(
           child: Text(
             text,
-            style: TextStyle(fontSize: 14, color: Colors.grey[800]),
+            style: TextStyle(fontSize: 14, color: Colors.grey[500]),
             overflow: TextOverflow.ellipsis,
             maxLines: 1,
           ),

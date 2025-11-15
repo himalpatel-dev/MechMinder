@@ -8,9 +8,17 @@ import 'package:provider/provider.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import '../screens/vehicle_list.dart';
+import '../screens/all_reminders_screen.dart';
 
 class AppSettingsScreen extends StatelessWidget {
-  const AppSettingsScreen({super.key});
+  final GlobalKey<VehicleListScreenState> vehicleListKey;
+  final GlobalKey<AllRemindersScreenState> allRemindersKey;
+  const AppSettingsScreen({
+    super.key,
+    required this.vehicleListKey,
+    required this.allRemindersKey,
+  });
 
   // --- (Your _exportDataAsJson and _importDataFromJson functions are unchanged) ---
   Future<void> _exportDataAsJson(BuildContext context) async {
@@ -142,8 +150,7 @@ class AppSettingsScreen extends StatelessWidget {
         builder: (ctx) => AlertDialog(
           title: const Text('ARE YOU SURE?'),
           content: const Text(
-            'Restoring from a backup will DELETE ALL current data in the app. This cannot be undone.\n\nAre you sure you want to proceed?',
-            //style: TextStyle(color: Colors.black),
+            'Restoring from a backup will DELETE ALL current data in the app. This cannot be undone.',
           ),
           actions: [
             TextButton(
@@ -151,10 +158,7 @@ class AppSettingsScreen extends StatelessWidget {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                foregroundColor: Colors.black,
-              ),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
               onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Wipe and Restore'),
             ),
@@ -174,16 +178,25 @@ class AppSettingsScreen extends StatelessWidget {
       String jsonString = await backupFile.readAsString();
       Map<String, dynamic> backupData = jsonDecode(jsonString);
       await dbHelper.restoreBackup(backupData);
+
+      // --- THIS IS THE FIX ---
+      // 1. Refresh the lists using the keys
+      vehicleListKey.currentState?.refreshVehicleList();
+      allRemindersKey.currentState?.refreshReminderList();
+
+      // 2. Show success and switch to the first tab
       scaffoldMessenger.showSnackBar(
         const SnackBar(
-          content: Text('Restore complete! Reloading data...'),
+          content: Text('Restore complete! Switching to Vehicles tab...'),
           backgroundColor: Colors.green,
         ),
       );
-      await Future.delayed(const Duration(seconds: 2));
+      await Future.delayed(const Duration(seconds: 1));
       if (context.mounted) {
-        Navigator.of(context).pop(true); // Send back "true" to refresh
+        // Find the TabController and switch to the first tab (index 0)
+        DefaultTabController.of(context).animateTo(0);
       }
+      // --- END OF FIX ---
     } catch (e) {
       print("Error importing data: $e");
       scaffoldMessenger.showSnackBar(
@@ -317,13 +330,16 @@ class AppSettingsScreen extends StatelessWidget {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.download_for_offline),
+              leading: Icon(
+                Icons.download_for_offline,
+                color: settings.primaryColor,
+              ),
               title: const Text('Export All Data'),
               subtitle: const Text('Save all data to a JSON backup file'),
               onTap: () => _exportDataAsJson(context),
             ),
             ListTile(
-              leading: const Icon(Icons.upload_file),
+              leading: Icon(Icons.upload_file, color: settings.primaryColor),
               title: const Text('Import Data'),
               subtitle: const Text('Restore from a JSON backup file'),
               onTap: () => _importDataFromJson(context),
@@ -362,7 +378,7 @@ class AppSettingsScreen extends StatelessWidget {
 
             // --- END NEW ---
             ListTile(
-              leading: const Icon(Icons.straighten),
+              leading: Icon(Icons.straighten, color: settings.primaryColor),
               title: const Text('Units'),
               subtitle: Text(
                 settings.unitType == 'km' ? 'Kilometers' : 'Miles',
@@ -372,7 +388,7 @@ class AppSettingsScreen extends StatelessWidget {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.attach_money),
+              leading: Icon(Icons.attach_money, color: settings.primaryColor),
               title: const Text('Currency'),
               subtitle: Text(settings.currencySymbol),
               onTap: () {

@@ -1,49 +1,70 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
 import '../service/notification_service.dart'; // Make sure this path is correct
 import '../widgets/full_screen_photo_viewer.dart'; // Make sure this path is correct
+import 'package:carousel_slider/carousel_slider.dart';
 
 class OverviewTab extends StatefulWidget {
   final int vehicleId;
-  const OverviewTab({super.key, required this.vehicleId});
+  final int dataVersion;
+
+  const OverviewTab({
+    super.key,
+    required this.vehicleId,
+    required this.dataVersion,
+  });
 
   @override
-  State<OverviewTab> createState() => _OverviewTabState();
+  State<OverviewTab> createState() => OverviewTabState();
 }
 
-class _OverviewTabState extends State<OverviewTab> {
+class OverviewTabState extends State<OverviewTab> {
   final dbHelper = DatabaseHelper.instance;
   final TextEditingController _odometerController = TextEditingController();
 
-  // ignore: unused_field
   Map<String, dynamic>? _vehicle;
-  Map<String, dynamic>? _nextDueDateReminder;
-  Map<String, dynamic>? _nextOdometerReminder;
   List<Map<String, dynamic>> _vehiclePhotos = [];
+
+  // --- NEW: Lists for reminders ---
+  List<Map<String, dynamic>> _overdueReminders = [];
+  List<Map<String, dynamic>> _comingSoonReminders = [];
+  int _currentOdo = 0;
+  // --- END NEW ---
 
   bool _isLoading = true;
   String? _errorMessage;
 
+  int _currentPhotoIndex = 0;
+  final CarouselSliderController _carouselController =
+      CarouselSliderController();
+
   @override
   void initState() {
     super.initState();
-    _loadData();
+    loadData();
   }
 
-  Future<void> _loadData() async {
+  @override
+  void didUpdateWidget(OverviewTab oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.dataVersion != oldWidget.dataVersion) {
+      loadData();
+    }
+  }
+
+  // --- UPDATED: This now loads reminders too ---
+  Future<void> loadData() async {
     try {
-      // 1. Get all data in parallel
       final data = await Future.wait([
         dbHelper.queryVehicleById(widget.vehicleId),
-        dbHelper.queryRemindersForVehicle(
-          widget.vehicleId,
-        ), // <-- Use the correct function
+        dbHelper.queryRemindersForVehicle(widget.vehicleId),
         dbHelper.queryPhotosForParent(widget.vehicleId, 'vehicle'),
       ]);
-
+      if (!mounted) return;
       final vehicleData = data[0] as Map<String, dynamic>?;
       final allReminders = data[1] as List<Map<String, dynamic>>;
       final photos = data[2] as List<Map<String, dynamic>>;
@@ -52,67 +73,54 @@ class _OverviewTabState extends State<OverviewTab> {
         throw Exception("Vehicle data not found (ID: ${widget.vehicleId})");
       }
 
-      // --- 2. Process the reminders (the correct logic) ---
+      // --- NEW: Process Reminders ---
+      _currentOdo = vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0;
       final String today = DateTime.now().toIso8601String().split('T')[0];
-      Map<String, dynamic>? nextDateRem;
-      Map<String, dynamic>? nextOdoRem;
+      final List<Map<String, dynamic>> overdue = [];
+      final List<Map<String, dynamic>> comingSoon = [];
 
-      // Find the *closest* date-based reminder
-      allReminders
-          .where(
-            (r) =>
-                r[DatabaseHelper.columnDueDate] != null &&
-                r[DatabaseHelper.columnDueDate].compareTo(today) >= 0,
-          )
-          .forEach((r) {
-            if (nextDateRem == null ||
-                r[DatabaseHelper.columnDueDate].compareTo(
-                      nextDateRem![DatabaseHelper.columnDueDate],
-                    ) <
-                    0) {
-              nextDateRem = r;
-            }
-          });
-
-      // Find the *closest* odo-based reminder
-      int currentOdo = vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0;
-      allReminders
-          .where(
-            (r) =>
-                r[DatabaseHelper.columnDueOdometer] != null &&
-                r[DatabaseHelper.columnDueOdometer] >= currentOdo,
-          )
-          .forEach((r) {
-            if (nextOdoRem == null ||
-                r[DatabaseHelper.columnDueOdometer] <
-                    nextOdoRem![DatabaseHelper.columnDueOdometer]) {
-              nextOdoRem = r;
-            }
-          });
-      // --- End of processing ---
+      for (var reminder in allReminders) {
+        bool isDateOverdue = false;
+        bool isOdoOverdue = false;
+        final String? dueDate = reminder[DatabaseHelper.columnDueDate];
+        if (dueDate != null && dueDate.compareTo(today) < 0) {
+          isDateOverdue = true;
+        }
+        final int? dueOdo = reminder[DatabaseHelper.columnDueOdometer];
+        if (dueOdo != null && _currentOdo >= dueOdo) {
+          isOdoOverdue = true;
+        }
+        if (isDateOverdue || isOdoOverdue) {
+          overdue.add(reminder);
+        } else {
+          comingSoon.add(reminder);
+        }
+      }
+      // --- END NEW ---
 
       setState(() {
         _vehicle = vehicleData;
-        _odometerController.text =
-            (vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0).toString();
-        _nextDueDateReminder = nextDateRem;
-        _nextOdometerReminder = nextOdoRem;
+        _odometerController.text = _currentOdo.toString();
         _vehiclePhotos = List.from(photos);
+        _overdueReminders = overdue;
+        _comingSoonReminders = comingSoon;
         _isLoading = false;
         _errorMessage = null;
       });
     } catch (e) {
       print("[DEBUG OverviewTab] !!!--- ERROR in _loadData ---!!!");
       print(e);
-      setState(() {
-        _isLoading = false;
-        _errorMessage = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _errorMessage = e.toString();
+        });
+      }
     }
   }
 
   void _saveOdometer() async {
-    // (This function is unchanged)
+    // (This function is unchanged, but calls loadData)
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
     await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
@@ -125,43 +133,98 @@ class _OverviewTabState extends State<OverviewTab> {
     if (mounted) {
       FocusScope.of(context).unfocus();
     }
-    final allReminders = await dbHelper.queryRemindersForVehicle(
-      widget.vehicleId,
-    );
-    for (var reminder in allReminders) {
-      final dueOdometer = reminder[DatabaseHelper.columnDueOdometer];
-      if (dueOdometer != null && newOdometer >= dueOdometer) {
-        final int reminderId = reminder[DatabaseHelper.columnId];
-        final String templateName = reminder['template_name'] ?? 'Service';
-        print("  > Odometer due for '$templateName'! Sending notification.");
-        await NotificationService().showImmediateReminder(
-          id: reminderId,
-          title: 'Vehicle Service Due',
-          body:
-              'Your "$templateName" service is due! (Reached $dueOdometer km).',
-        );
-      }
-    }
-    _refreshReminderSummary();
+    // We must call loadData() to refresh reminders and odo
+    loadData();
   }
 
-  Future<void> _refreshReminderSummary() async {
-    // (This function is unchanged)
-    final summary = await dbHelper.queryNextDueSummary(widget.vehicleId);
-    setState(() {
-      _nextDueDateReminder = summary['nextByDate'];
-      _nextOdometerReminder = summary['nextByOdometer'];
-    });
+  // --- NEW: Copied from Reminders Tab ---
+  void _showSnoozeDialog(
+    Map<String, dynamic> reminder,
+    SettingsProvider settings,
+  ) {
+    final int reminderId = reminder[DatabaseHelper.columnId];
+    String? currentDueDate = reminder[DatabaseHelper.columnDueDate];
+    int? currentDueOdo = reminder[DatabaseHelper.columnDueOdometer];
+    final TextEditingController daysController = TextEditingController(
+      text: '7',
+    );
+    final TextEditingController odoController = TextEditingController(
+      text: '100',
+    );
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Snooze Reminder'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Snooze by days (e.g., 7):'),
+            TextField(
+              controller: daysController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            ),
+            const SizedBox(height: 16),
+            Text('Snooze by ${settings.unitType} (e.g., 100):'),
+            TextField(
+              controller: odoController,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              int? daysToAdd = int.tryParse(daysController.text);
+              int? odoToAdd = int.tryParse(odoController.text);
+              String? newDueDate = currentDueDate;
+              int? newDueOdometer = currentDueOdo;
+
+              if (daysToAdd != null &&
+                  daysToAdd > 0 &&
+                  currentDueDate != null) {
+                DateTime oldDate = DateTime.parse(currentDueDate);
+                newDueDate = oldDate
+                    .add(Duration(days: daysToAdd))
+                    .toIso8601String()
+                    .split('T')[0];
+              }
+              if (odoToAdd != null && odoToAdd > 0 && currentDueOdo != null) {
+                newDueOdometer = currentDueOdo + odoToAdd;
+              }
+
+              await dbHelper.updateReminder(
+                reminderId,
+                newDueDate,
+                newDueOdometer,
+              );
+
+              if (mounted) {
+                Navigator.of(ctx).pop();
+              }
+              loadData(); // Use the main refresh function
+            },
+            child: const Text('Snooze'),
+          ),
+        ],
+      ),
+    );
   }
+  // --- END NEW ---
 
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
-    final Color myAppColor = settings.primaryColor;
+
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-
     if (_errorMessage != null) {
       return Center(
         child: Padding(
@@ -176,12 +239,14 @@ class _OverviewTabState extends State<OverviewTab> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0),
+      padding: const EdgeInsets.all(16.0).copyWith(top: 0),
       child: Column(
         children: [
-          // --- 1. Odometer Card (UPDATED) ---
+          _buildPhotoGalleryCard(settings),
+
           Card(
             elevation: 4,
+            margin: const EdgeInsets.only(top: 16),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
@@ -189,7 +254,6 @@ class _OverviewTabState extends State<OverviewTab> {
                 children: [
                   Row(
                     children: [
-                      // --- THIS IS THE FIX ---
                       Icon(Icons.speed, size: 14, color: settings.primaryColor),
                       const SizedBox(width: 4),
                       Text(
@@ -199,7 +263,6 @@ class _OverviewTabState extends State<OverviewTab> {
                           color: settings.primaryColor,
                         ),
                       ),
-                      // --- END OF FIX ---
                     ],
                   ),
                   Row(
@@ -229,139 +292,277 @@ class _OverviewTabState extends State<OverviewTab> {
             ),
           ),
 
-          // --- 2. Next Due Summary Card (Unchanged) ---
-          const SizedBox(height: 20),
-          Card(
-            elevation: 4,
-            child: Column(
-              children: [
-                const ListTile(
-                  title: Text(
-                    'Next Due Summary',
-                    style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
-                  ),
-                ),
-                const Divider(height: 1, indent: 16, endIndent: 16),
-                _buildDetailTile(
-                  icon: Icons.calendar_today,
-                  title:
-                      _nextDueDateReminder?['template_name'] ??
-                      'No date-based reminders',
-                  subtitle: _nextDueDateReminder != null
-                      ? 'Due by: ${_nextDueDateReminder![DatabaseHelper.columnDueDate]}'
-                      : 'All caught up!',
-                  isFaded: _nextDueDateReminder == null,
-                  primaryColor: myAppColor,
-                ),
-                _buildDetailTile(
-                  icon: Icons.speed,
-                  title:
-                      _nextOdometerReminder?['template_name'] ??
-                      'No odometer-based reminders',
-                  subtitle: _nextOdometerReminder != null
-                      ? 'Due by: ${_nextOdometerReminder![DatabaseHelper.columnDueOdometer]} ${settings.unitType}'
-                      : 'All caught up!',
-                  isFaded: _nextOdometerReminder == null,
-                  primaryColor: myAppColor,
-                ),
-              ],
-            ),
-          ),
+          // --- REMOVED THE OLD "NEXT DUE" CARD ---
 
-          // --- 3. Photo Gallery Card (Unchanged) ---
+          // --- NEW: ADD THE REMINDER LISTS ---
           const SizedBox(height: 20),
-          Card(
-            // (This card is unchanged)
-            elevation: 4,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16.0),
-                  child: Text(
-                    'PHOTO GALLERY',
-                    style: TextStyle(fontSize: 14, color: Colors.grey),
-                  ),
-                ),
-                Container(
-                  height: 120,
-                  child: _vehiclePhotos.isEmpty
-                      ? const Center(child: Text('No photos added yet.'))
-                      : ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                          itemCount: _vehiclePhotos.length,
-                          itemBuilder: (context, index) {
-                            final photo = _vehiclePhotos[index];
-                            final photoPath = photo[DatabaseHelper.columnUri];
 
-                            return GestureDetector(
-                              onTap: () {
-                                final paths = _vehiclePhotos
-                                    .map(
-                                      (photo) =>
-                                          photo[DatabaseHelper.columnUri]
-                                              as String,
-                                    )
-                                    .toList();
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (context) => FullScreenPhotoViewer(
-                                      photoPaths: paths,
-                                      initialIndex: index,
-                                    ),
-                                  ),
-                                );
-                              },
-                              child: Container(
-                                width: 120,
-                                height: 120,
-                                margin: const EdgeInsets.only(right: 8.0),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
-                                  image: DecorationImage(
-                                    image: FileImage(File(photoPath)),
-                                    fit: BoxFit.cover,
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                const SizedBox(height: 16),
-              ],
+          // --- OVERDUE SECTION ---
+          if (_overdueReminders.isNotEmpty) ...[
+            _buildSectionHeader('Overdue', Colors.red[700]!),
+            ..._overdueReminders.map(
+              (r) => _buildReminderTile(r, settings, isOverdue: true),
             ),
-          ),
+          ],
+
+          // --- COMING SOON SECTION ---
+          const SizedBox(height: 16),
+          _buildSectionHeader('Upcoming', Colors.blue[700]!),
+          if (_comingSoonReminders.isEmpty)
+            const Padding(
+              padding: EdgeInsets.all(16.0),
+              child: Text(
+                'No upcoming reminders.',
+                style: TextStyle(color: Colors.grey),
+              ),
+            )
+          else
+            ..._comingSoonReminders.map(
+              (r) => _buildReminderTile(r, settings, isOverdue: false),
+            ),
+          // --- END NEW ---
         ],
       ),
     );
   }
 
-  // (This helper is unchanged and already uses the theme color)
-  Widget _buildDetailTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color primaryColor,
-    bool isFaded = false,
-  }) {
-    final Color? activeColor = primaryColor;
-    final Color? fadedColor = Theme.of(context).disabledColor;
+  // (Photo Gallery card is unchanged)
+  Widget _buildPhotoGalleryCard(SettingsProvider settings) {
+    return Card(
+      elevation: 4,
+      margin: const EdgeInsets.symmetric(horizontal: 0, vertical: 16),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          if (_vehiclePhotos.isEmpty)
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: Container(
+                color: Colors.grey[200],
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.photo_library,
+                        color: Colors.grey[400],
+                        size: 40,
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'No photos added yet.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                      const Text(
+                        'Edit vehicle to add photos.',
+                        style: TextStyle(color: Colors.grey, fontSize: 12),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            )
+          else
+            CarouselSlider(
+              carouselController: _carouselController,
+              options: CarouselOptions(
+                height: 200.0,
+                viewportFraction: 1.0,
+                enableInfiniteScroll: true,
+                onPageChanged: (index, reason) {
+                  setState(() {
+                    _currentPhotoIndex = index;
+                  });
+                },
+              ),
+              items: _vehiclePhotos.map((photo) {
+                final photoPath = photo[DatabaseHelper.columnUri];
+                return Builder(
+                  builder: (BuildContext context) {
+                    return GestureDetector(
+                      onTap: () {
+                        final paths = _vehiclePhotos
+                            .map((p) => p[DatabaseHelper.columnUri] as String)
+                            .toList();
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => FullScreenPhotoViewer(
+                              photoPaths: paths,
+                              initialIndex: _currentPhotoIndex,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Container(
+                        width: MediaQuery.of(context).size.width,
+                        decoration: BoxDecoration(
+                          image: DecorationImage(
+                            image: FileImage(File(photoPath)),
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }).toList(),
+            ),
+          if (_vehiclePhotos.length > 1)
+            Positioned(
+              bottom: 10.0,
+              left: 0,
+              right: 0,
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: _vehiclePhotos.asMap().entries.map((entry) {
+                  return Container(
+                    width: 8.0,
+                    height: 8.0,
+                    margin: const EdgeInsets.symmetric(
+                      vertical: 10.0,
+                      horizontal: 4.0,
+                    ),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(
+                        _currentPhotoIndex == entry.key ? 0.9 : 0.4,
+                      ),
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+          if (_vehiclePhotos.length > 1)
+            Positioned.fill(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(Icons.chevron_left, color: Colors.white),
+                      onPressed: () => _carouselController.previousPage(),
+                    ),
+                  ),
+                  Container(
+                    margin: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.3),
+                      shape: BoxShape.circle,
+                    ),
+                    child: IconButton(
+                      icon: const Icon(
+                        Icons.chevron_right,
+                        color: Colors.white,
+                      ),
+                      onPressed: () => _carouselController.nextPage(),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 
-    return ListTile(
-      leading: Icon(icon, color: isFaded ? fadedColor : activeColor),
-      title: Text(
-        title,
+  // --- REMOVED _buildDetailTile ---
+
+  // --- NEW: Copied from Reminders Tab ---
+  Widget _buildSectionHeader(String title, Color color) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 4),
+      child: Text(
+        title.toUpperCase(),
         style: TextStyle(
           fontWeight: FontWeight.bold,
-          color: isFaded ? fadedColor : null,
+          color: color,
+          fontSize: 14,
         ),
       ),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(fontSize: 14, color: isFaded ? fadedColor : null),
+    );
+  }
+
+  // --- NEW: Copied from Reminders Tab ---
+  Widget _buildReminderTile(
+    Map<String, dynamic> reminder,
+    SettingsProvider settings, {
+    bool isOverdue = false,
+  }) {
+    String dueDate = reminder[DatabaseHelper.columnDueDate] ?? 'N/A';
+    String dueOdo =
+        reminder[DatabaseHelper.columnDueOdometer]?.toString() ?? 'N/A';
+
+    // --- FIX: Use template_name first, then fall back to notes ---
+    String title =
+        reminder['template_name'] ??
+        reminder[DatabaseHelper.columnNotes] ??
+        'Reminder';
+
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      elevation: 2,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border(
+            left: BorderSide(
+              color: isOverdue ? Colors.red : Colors.orange,
+              width: 4,
+            ),
+          ),
+        ),
+        child: ListTile(
+          leading: Icon(
+            Icons.notifications_active,
+            color: isOverdue ? Colors.red[700] : Colors.orange,
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          subtitle: Text(
+            'Date: $dueDate\nOdometer: $dueOdo ${settings.unitType}',
+          ),
+          isThreeLine: true,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.snooze, color: Colors.blue),
+                tooltip: 'Snooze Reminder',
+                onPressed: () {
+                  _showSnoozeDialog(reminder, settings);
+                },
+              ),
+              IconButton(
+                icon: const Icon(
+                  Icons.check_circle_outline,
+                  color: Colors.green,
+                ),
+                tooltip: 'Mark as Complete',
+                onPressed: () async {
+                  int id = reminder[DatabaseHelper.columnId];
+                  await dbHelper.deleteReminder(id);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Reminder marked as complete!'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                  loadData();
+                },
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

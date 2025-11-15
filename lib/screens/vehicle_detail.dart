@@ -4,10 +4,9 @@ import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'overview_tab.dart'; // Make sure all your tabs are imported
 import 'service_history_tab.dart';
-import 'upcoming_reminders_tab.dart';
 import 'stats_tab.dart';
 import 'expenses_tab.dart';
-import 'vehicle_settings_tab.dart';
+import 'add_vehicle.dart'; // <-- NEW: Import AddVehicleScreen
 
 class VehicleDetailScreen extends StatefulWidget {
   final int vehicleId;
@@ -24,17 +23,68 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
   Map<String, dynamic>? _vehicle;
   bool _isLoading = true;
+  int _dataVersion = 0;
 
   // We need to fetch the odometer here to pass it to the service screen
   // ignore: unused_field
   int _currentOdometer = 0;
+  final String _vehicleName = "Loading...";
 
   @override
   void initState() {
     super.initState();
     // --- UPDATED: We now have 6 tabs ---
-    _tabController = TabController(length: 6, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _loadVehicleDetails();
+  }
+
+  void _navigateToEditVehicle(BuildContext context) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => AddVehicleScreen(vehicleId: widget.vehicleId),
+      ),
+    ).then((_) {
+      // 1. Reload the AppBar title
+      _loadVehicleDetails();
+
+      // --- THIS IS THE FIX ---
+      // 2. Increment the version number. This will force
+      //    the OverviewTab to reload its data.
+      setState(() {
+        _dataVersion++;
+      });
+      // --- END OF FIX ---
+    });
+  }
+
+  void _showDeleteConfirmation(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Delete Vehicle?'),
+        content: Text(
+          'Are you sure you want to delete "$_vehicleName"?\n\nThis action is permanent and will delete all associated services, expenses, and reminders.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () async {
+              await dbHelper.deleteVehicle(widget.vehicleId);
+              if (mounted) {
+                Navigator.of(ctx).pop(); // Close dialog
+                Navigator.of(context).pop(); // Go back to home screen
+              }
+            },
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
   }
 
   void _loadVehicleDetails() async {
@@ -57,7 +107,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
   @override
   Widget build(BuildContext context) {
-    // ignore: unused_local_variable
     final settings = Provider.of<SettingsProvider>(context);
 
     if (_isLoading) {
@@ -76,51 +125,64 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(vehicleName),
-
-        // --- THIS IS THE REDESIGNED TABBAR ---
-        bottom: TabBar(
-          controller: _tabController,
-          isScrollable: true, // Keep it scrollable for 6 items
-          // --- NEW PROPERTIES ---
-          indicatorWeight: 4.0, // Make the line thicker
-          // unselectedLabelColor: Colors.black54, // Fades out inactive tabs
-          labelStyle: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 15,
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.edit, color: settings.primaryColor),
+            tooltip: 'Edit Vehicle',
+            onPressed: () => _navigateToEditVehicle(context),
           ),
-          tabAlignment: TabAlignment.start, // Aligns tabs to the start
-          padding: const EdgeInsets.symmetric(
-            horizontal: 8.0,
-          ), // Reduces the side margin
-          labelPadding: const EdgeInsets.symmetric(
-            horizontal: 16.0,
-          ), // Space between tabs
-          // --- END OF NEW PROPERTIES ---
-          tabs: const [
-            Tab(text: 'Overview'),
-            Tab(text: 'History'), // Shortened from "Service History"
-            Tab(text: 'Upcoming'),
-            Tab(text: 'Stats'),
-            Tab(text: 'Expenses'),
-            Tab(text: 'Settings'),
-          ],
+          IconButton(
+            icon: const Icon(Icons.delete_forever, color: Colors.red),
+            tooltip: 'Delete Vehicle',
+            onPressed: () => _showDeleteConfirmation(context),
+          ),
+        ],
+        // --- THIS IS THE REDESIGNED TABBAR ---
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48.0),
+          child: Material(
+            // Use material to get the proper background / ripple if needed
+            color: Theme.of(context).appBarTheme.backgroundColor,
+            child: TabBar(
+              controller: _tabController,
+              isScrollable: false, // <-- each tab will share available width
+              indicatorWeight: 3.5,
+              indicatorSize:
+                  TabBarIndicatorSize.tab, // indicator fills the full tab
+              // remove extra padding so tabs divide space cleanly
+              labelPadding: EdgeInsets.zero,
+              // styles
+              labelStyle: TextStyle(
+                fontWeight: FontWeight.w700,
+                fontSize: MediaQuery.of(context).size.width > 400 ? 15 : 13,
+              ),
+              unselectedLabelStyle: TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: MediaQuery.of(context).size.width > 400 ? 14 : 12,
+              ),
+
+              tabs: const [
+                Tab(text: 'Overview'),
+                Tab(text: 'Services'),
+                Tab(text: 'Expenses'),
+                Tab(text: 'Stats'),
+              ],
+            ),
+          ),
         ),
         // --- END OF REDESIGN ---
       ),
       body: TabBarView(
         controller: _tabController,
         children: [
-          OverviewTab(vehicleId: widget.vehicleId),
+          OverviewTab(
+            vehicleId: widget.vehicleId,
+            dataVersion: _dataVersion, // Pass the signal
+          ),
           ServiceHistoryTab(vehicleId: widget.vehicleId),
-          UpcomingRemindersTab(vehicleId: widget.vehicleId),
-          StatsTab(vehicleId: widget.vehicleId),
           ExpensesTab(vehicleId: widget.vehicleId),
-          _vehicle == null
-              ? const Center(child: Text('Error: Vehicle data not found.'))
-              : VehicleSettingsTab(
-                  vehicle: _vehicle!,
-                  onVehicleUpdated: _loadVehicleDetails,
-                ),
+          StatsTab(vehicleId: widget.vehicleId),
         ],
       ),
     );

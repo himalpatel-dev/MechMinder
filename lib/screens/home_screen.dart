@@ -90,56 +90,62 @@ class _HomeScreenState extends State<HomeScreen>
     }
     // --- END FIX ---
 
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('MechMinder'),
-        actions: [
-          // --- UPDATED BUTTON ---
-          IconButton(
-            icon: Icon(themeIcon),
-            tooltip: 'Toggle Theme',
-            onPressed: () {
-              // --- FIX: Simplified Toggle Logic ---
-              final ThemeMode currentMode = settings.themeMode;
-              if (currentMode == ThemeMode.light) {
-                settings.updateThemeMode(ThemeMode.dark);
-              } else {
-                settings.updateThemeMode(ThemeMode.light);
-              }
-              // --- END FIX ---
-            },
-          ),
-        ],
-      ),
+    return DefaultTabController(
+      length: 4,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('MechMinder'),
+          actions: [
+            // --- UPDATED BUTTON ---
+            IconButton(
+              icon: Icon(themeIcon),
+              tooltip: 'Toggle Theme',
+              onPressed: () {
+                // --- FIX: Simplified Toggle Logic ---
+                final ThemeMode currentMode = settings.themeMode;
+                if (currentMode == ThemeMode.light) {
+                  settings.updateThemeMode(ThemeMode.dark);
+                } else {
+                  settings.updateThemeMode(ThemeMode.light);
+                }
+                // --- END FIX ---
+              },
+            ),
+          ],
+        ),
 
-      // (The rest of the file is unchanged)
-      body: TabBarView(
-        controller: _tabController,
-        children: [
-          VehicleListScreen(key: _vehicleListKey),
-          AllRemindersScreen(key: _allRemindersKey),
-          const MasterScreen(),
-          const AppSettingsScreen(),
-        ],
-      ),
-      floatingActionButton: _buildFloatingActionButton(),
-      bottomNavigationBar: Material(
-        color: barColor,
-        elevation: 8,
-        child: SafeArea(
-          child: TabBar(
-            controller: _tabController,
-            labelColor: settings.primaryColor,
-            unselectedLabelColor: Colors.grey,
-            indicatorColor: settings.primaryColor,
-            indicatorSize: TabBarIndicatorSize.label,
-            labelStyle: const TextStyle(fontSize: 10),
-            tabs: const [
-              Tab(icon: Icon(Icons.directions_car), text: 'Vehicles'),
-              Tab(icon: Icon(Icons.notifications_active), text: 'Reminders'),
-              Tab(icon: Icon(Icons.apps), text: 'Master'),
-              Tab(icon: Icon(Icons.settings), text: 'Settings'),
-            ],
+        // (The rest of the file is unchanged)
+        body: TabBarView(
+          controller: _tabController,
+          children: [
+            VehicleListScreen(key: _vehicleListKey),
+            AllRemindersScreen(key: _allRemindersKey),
+            const MasterScreen(),
+            AppSettingsScreen(
+              vehicleListKey: _vehicleListKey,
+              allRemindersKey: _allRemindersKey,
+            ),
+          ],
+        ),
+        floatingActionButton: _buildFloatingActionButton(),
+        bottomNavigationBar: Material(
+          color: barColor,
+          elevation: 8,
+          child: SafeArea(
+            child: TabBar(
+              controller: _tabController,
+              labelColor: settings.primaryColor,
+              unselectedLabelColor: Colors.grey,
+              indicatorColor: settings.primaryColor,
+              indicatorSize: TabBarIndicatorSize.label,
+              labelStyle: const TextStyle(fontSize: 10),
+              tabs: const [
+                Tab(icon: Icon(Icons.directions_car), text: 'Vehicles'),
+                Tab(icon: Icon(Icons.notifications_active), text: 'Reminders'),
+                Tab(icon: Icon(Icons.apps), text: 'Master'),
+                Tab(icon: Icon(Icons.settings), text: 'Settings'),
+              ],
+            ),
           ),
         ),
       ),

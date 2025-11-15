@@ -4,6 +4,7 @@ import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'add_service_screen.dart';
 import 'service_detail_screen.dart';
+import 'package:flutter/rendering.dart';
 
 class ServiceHistoryTab extends StatefulWidget {
   final int vehicleId;
@@ -18,11 +19,34 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
   List<Map<String, dynamic>> _serviceRecords = [];
   bool _isLoading = true;
   int _currentOdometer = 0;
-
+  late ScrollController _scrollController;
+  bool _isFabVisible = true;
   @override
   void initState() {
     super.initState();
     _refreshServiceList();
+
+    _scrollController = ScrollController();
+    _scrollController.addListener(() {
+      // If user is scrolling down, hide the button
+      if (_scrollController.position.userScrollDirection ==
+          ScrollDirection.reverse) {
+        if (_isFabVisible) {
+          setState(() {
+            _isFabVisible = false;
+          });
+        }
+      }
+      // If user is scrolling up, show the button
+      else if (_scrollController.position.userScrollDirection ==
+          ScrollDirection.forward) {
+        if (!_isFabVisible) {
+          setState(() {
+            _isFabVisible = true;
+          });
+        }
+      }
+    });
   }
 
   Future<void> _refreshServiceList() async {
@@ -92,6 +116,7 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
               ),
             )
           : ListView.builder(
+              controller: _scrollController,
               padding: const EdgeInsets.only(bottom: 80),
               itemCount: sortedMonths.length,
               itemBuilder: (context, index) {
@@ -100,8 +125,8 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
 
                 return Card(
                   margin: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
+                    horizontal: 18,
+                    vertical: 14,
                   ),
                   elevation: 2,
                   clipBehavior: Clip.antiAlias,
@@ -125,9 +150,12 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _navigateToAddService,
-        child: const Icon(Icons.add),
+      floatingActionButton: Visibility(
+        visible: _isFabVisible,
+        child: FloatingActionButton(
+          onPressed: _navigateToAddService,
+          child: const Icon(Icons.add),
+        ),
       ),
     );
   }

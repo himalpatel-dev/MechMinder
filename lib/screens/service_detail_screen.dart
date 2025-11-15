@@ -148,7 +148,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.edit),
+            icon: Icon(Icons.edit, color: settings.primaryColor),
             tooltip: 'Edit Service',
             onPressed: () {
               Navigator.push(
@@ -167,7 +167,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           ),
           // --- NEW: DELETE BUTTON ---
           IconButton(
-            icon: const Icon(Icons.delete_forever),
+            icon: Icon(Icons.delete_forever, color: settings.primaryColor),
             tooltip: 'Delete Service',
             onPressed: _showDeleteConfirmation,
           ),
