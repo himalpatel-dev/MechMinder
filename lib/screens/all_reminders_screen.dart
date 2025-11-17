@@ -14,6 +14,7 @@ class AllRemindersScreen extends StatefulWidget {
 class AllRemindersScreenState extends State<AllRemindersScreen> {
   final dbHelper = DatabaseHelper.instance;
   bool _isLoading = true;
+  final Set<String> _expandedVehicles = {};
 
   Map<String, List<Map<String, dynamic>>> _groupedReminders = {};
   final _manualReminderFormKey = GlobalKey<FormState>();
@@ -37,8 +38,27 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
   }
 
   Future<void> refreshReminderList() async {
-    // (This function is unchanged)
-    final allReminders = await dbHelper.queryAllRemindersGroupedByVehicle();
+    // 1. Get all service/manual reminders
+    final serviceReminders = await dbHelper.queryAllRemindersGroupedByVehicle();
+
+    // 2. Get all paper reminders
+    final paperReminders = await dbHelper.queryAllExpiringPapers();
+
+    // 3. Create a new, combined list
+    final List<Map<String, dynamic>> allReminders = [];
+
+    // Add service reminders
+    allReminders.addAll(serviceReminders);
+
+    // Add paper reminders (and mark them so we know how to build the card)
+    for (var paper in paperReminders) {
+      allReminders.add({
+        ...paper, // Add all data from the paper
+        'isPaperReminder': true, // This is our new flag
+      });
+    }
+
+    // 4. Group the combined list by vehicle
     final Map<String, List<Map<String, dynamic>>> grouped = {};
     for (var reminder in allReminders) {
       final vehicleName = '${reminder[DatabaseHelper.columnModel]}';
@@ -47,6 +67,11 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
       }
       grouped[vehicleName]!.add(reminder);
     }
+
+    if (grouped.isNotEmpty && _expandedVehicles.isEmpty) {
+      _expandedVehicles.add(grouped.keys.first);
+    }
+
     setState(() {
       _groupedReminders = grouped;
       _isLoading = false;
@@ -306,7 +331,8 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                   bool isDateOverdue = false;
                   bool isOdoOverdue = false;
                   final String? dueDate =
-                      reminder[DatabaseHelper.columnDueDate];
+                      reminder[DatabaseHelper.columnDueDate] ??
+                      reminder[DatabaseHelper.columnPaperExpiryDate];
                   if (dueDate != null && dueDate.compareTo(today) < 0) {
                     isDateOverdue = true;
                   }
@@ -328,12 +354,11 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                 return Container(
                   margin: const EdgeInsets.symmetric(
                     horizontal: 8,
-                    vertical: 6,
+                    vertical: 8,
                   ),
                   clipBehavior:
                       Clip.antiAlias, // Clips the ExpansionTile's corners
                   decoration: BoxDecoration(
-                    color: Theme.of(context).scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(12),
                     // border: Border(
                     //   left: BorderSide(
@@ -367,7 +392,8 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                     children: remindersForVehicle.map((reminder) {
                       bool isOverdue = false;
                       final String? dueDate =
-                          reminder[DatabaseHelper.columnDueDate];
+                          reminder[DatabaseHelper.columnDueDate] ??
+                          reminder[DatabaseHelper.columnPaperExpiryDate];
                       if (dueDate != null && dueDate.compareTo(today) < 0) {
                         isOverdue = true;
                       }
@@ -474,51 +500,63 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
     SettingsProvider settings, {
     bool isOverdue = false,
   }) {
-    String dueDate = reminder[DatabaseHelper.columnDueDate] ?? 'N/A';
-    String dueOdo =
-        reminder[DatabaseHelper.columnDueOdometer]?.toString() ?? 'N/A';
-    String title =
-        reminder['template_name'] ??
-        reminder[DatabaseHelper.columnNotes] ??
-        'Reminder';
-
-    // The child cards should be standard cards
+    bool isPaper = reminder['isPaperReminder'] ?? false;
+    String title;
+    String dueDate;
+    String dueOdo;
+    IconData icon;
+    if (isPaper) {
+      // It's a Vehicle Paper
+      title = reminder[DatabaseHelper.columnPaperType] ?? 'Paper';
+      dueDate = reminder[DatabaseHelper.columnPaperExpiryDate] ?? 'N/A';
+      dueOdo = 'N/A'; // Papers don't have odometer
+      icon = _getIconForPaperType(title);
+    } else {
+      dueDate = reminder[DatabaseHelper.columnDueDate] ?? 'N/A';
+      dueOdo = reminder[DatabaseHelper.columnDueOdometer]?.toString() ?? 'N/A';
+      title =
+          reminder['template_name'] ??
+          reminder[DatabaseHelper.columnNotes] ??
+          'Reminder';
+      icon = Icons.warning_amber_rounded;
+    }
     return Card(
       margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       elevation: 2,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border(
-            left: BorderSide(
-              color: isOverdue ? Colors.red : Colors.orange,
-              width: 4,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isOverdue ? Colors.red[700] : Colors.orange[700],
+              size: 30,
             ),
-          ),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
-          child: Row(
-            children: [
-              Icon(
-                Icons.warning_amber_rounded,
-                color: isOverdue ? Colors.red[700] : Colors.orange[700],
-                size: 30,
-              ),
-              const SizedBox(width: 12),
+            const SizedBox(width: 12),
 
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
                     ),
-                    const SizedBox(height: 6),
+                  ),
+                  const SizedBox(height: 6),
+                  if (isPaper)
+                    Text(
+                      'Expires: $dueDate', // Simpler text for papers
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  else
                     Text(
                       'Due: $dueDate   |   $dueOdo ${settings.unitType}',
                       style: TextStyle(
@@ -528,10 +566,10 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ],
-                ),
+                ],
               ),
-
+            ),
+            if (!isPaper) ...[
               IconButton(
                 icon: Icon(Icons.snooze, color: Colors.blue[600]),
                 tooltip: 'Snooze Reminder',
@@ -539,16 +577,20 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                   _showSnoozeDialog(reminder, settings);
                 },
               ),
-
               IconButton(
-                icon: Icon(
+                icon: const Icon(
                   Icons.check_circle_outline,
-                  color: Colors.green[600],
+                  color: Colors.green,
                 ),
                 tooltip: 'Mark as Complete',
                 onPressed: () async {
                   int id = reminder[DatabaseHelper.columnId];
-                  await dbHelper.deleteReminder(id);
+
+                  // --- THIS IS THE FIX ---
+                  // Instead of deleting, we update the status
+                  await dbHelper.updateReminderStatus(id, 'completed');
+                  // --- END OF FIX ---
+
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -561,9 +603,22 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                 },
               ),
             ],
-          ),
+          ],
         ),
       ),
     );
+  }
+
+  IconData _getIconForPaperType(String type) {
+    switch (type.toLowerCase()) {
+      case 'insurance':
+        return Icons.shield;
+      case 'puc':
+        return Icons.cloud_outlined;
+      case 'registration':
+        return Icons.badge;
+      default:
+        return Icons.description;
+    }
   }
 }

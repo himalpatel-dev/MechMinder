@@ -359,8 +359,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
 
   Future<void> _saveService() async {
     if (_formKey.currentState!.validate()) {
-      _updateTotalCost(); // Recalculate total
-
+      _updateTotalCost();
       Map<String, dynamic> serviceRow = {
         DatabaseHelper.columnVehicleId: widget.vehicleId,
         DatabaseHelper.columnServiceName: _serviceNameController.text,
@@ -372,8 +371,8 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         DatabaseHelper.columnVendorId: _selectedVendorId,
         DatabaseHelper.columnNotes: _notesController.text,
       };
-      int serviceId;
 
+      int serviceId;
       if (_isEditMode) {
         serviceId = widget.serviceId!;
         serviceRow[DatabaseHelper.columnId] = serviceId;
@@ -382,10 +381,22 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         serviceId = await dbHelper.insertService(serviceRow);
       }
 
-      // --- 2. DELETE AND RE-SAVE ALL ITEMS (unchanged) ---
+      // --- 1. RESET ALL REMINDERS LINKED TO THIS SERVICE ---
+      // This is the "un-complete" step you wanted!
+      print("--- STARTING REMINDER SYNC ---");
+      print(
+        "  > [EDIT]: Un-completing any reminders previously completed by service $serviceId",
+      );
+      await dbHelper.uncompleteRemindersByService(serviceId);
+
+      // 2. Delete all reminders CREATED BY this service (we will re-create them)
+      print("  > [EDIT]: Deleting all reminders created by service $serviceId");
+      await dbHelper.deleteRemindersByService(serviceId);
+
+      // 3. Delete and re-save all parts (unchanged)
       await dbHelper.deleteAllServiceItemsForService(serviceId);
       List<int> newTemplateIdsUsed =
-          []; // Get list of templates in this service
+          []; // Get list of templates *now* in this service
 
       for (var item in _serviceItems) {
         String name = item.nameController.text;
@@ -412,23 +423,26 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
       }
 
-      // --- 3. SYNC REMINDERS (THE NEW, PERFECT LOGIC) ---
-      print("--- STARTING REMINDER SYNC ---");
-
-      // 1. DELETE all reminders previously created by *this service*.
-      // This fixes your "remove part" bug.
+      // 4. For each part, complete old reminders and create new ones
+      final newTemplateIdSet = newTemplateIdsUsed.toSet();
       print(
-        "  > Deleting all old reminders linked to this service (ID: $serviceId)...",
+        "  > [SAVE]: Found ${newTemplateIdSet.length} templates in this service.",
       );
-      await dbHelper.deleteRemindersByService(serviceId);
 
-      // 2. Find reminders TO ADD (based on parts list)
-      final remindersToAdd = newTemplateIdsUsed.toSet();
-      print("[DEBUG] Reminders TO ADD (Auto Part IDs): $remindersToAdd");
+      if (newTemplateIdSet.isNotEmpty) {
+        for (int templateId in newTemplateIdSet) {
+          // 4a. "AUTO-COMPLETE": Mark any old 'pending' reminders as 'completed'
+          print(
+            "  > [SAVE]: Completing old 'pending' reminders for template $templateId...",
+          );
+          await dbHelper.completeRemindersByTemplate(
+            widget.vehicleId,
+            templateId,
+            serviceId,
+          );
 
-      if (remindersToAdd.isNotEmpty) {
-        for (int templateIdToAdd in remindersToAdd) {
-          final template = await dbHelper.queryTemplateById(templateIdToAdd);
+          // 4b. "CREATE NEW": Add the new 'pending' reminder for the future
+          final template = await dbHelper.queryTemplateById(templateId);
           if (template != null) {
             int? intervalDays = template[DatabaseHelper.columnIntervalDays];
             int? intervalKm = template[DatabaseHelper.columnIntervalKm];
@@ -446,21 +460,24 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               nextDueOdometer = newOdometer + intervalKm;
             }
             if (nextDueDate != null || nextDueOdometer != null) {
-              print("  > Creating new reminder for template $templateIdToAdd");
+              print(
+                "  > [SAVE]: Creating new reminder for template $templateId",
+              );
 
               await dbHelper.insertReminder({
                 DatabaseHelper.columnVehicleId: widget.vehicleId,
-                DatabaseHelper.columnServiceId: serviceId, // <-- THE FIX
-                DatabaseHelper.columnTemplateId: templateIdToAdd,
+                DatabaseHelper.columnServiceId:
+                    serviceId, // Link to this service
+                DatabaseHelper.columnTemplateId: templateId,
                 DatabaseHelper.columnDueDate: nextDueDate,
                 DatabaseHelper.columnDueOdometer: nextDueOdometer,
+                DatabaseHelper.columnStatus: 'pending', // <-- NEW
               });
             }
           }
         }
       }
       print("--- REMINDER SYNC COMPLETE ---");
-      // --- END OF NEW LOGIC ---
 
       // (Save Photos logic is unchanged)
       for (var imageFile in _newImageFiles) {

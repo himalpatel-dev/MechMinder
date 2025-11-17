@@ -4,9 +4,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
-import '../service/notification_service.dart'; // Make sure this path is correct
+// Make sure this path is correct
 import '../widgets/full_screen_photo_viewer.dart'; // Make sure this path is correct
 import 'package:carousel_slider/carousel_slider.dart';
+import '../service/notification_service.dart'; // Make sure this path is correct
 
 class OverviewTab extends StatefulWidget {
   final int vehicleId;
@@ -26,6 +27,7 @@ class OverviewTabState extends State<OverviewTab> {
   final dbHelper = DatabaseHelper.instance;
   final TextEditingController _odometerController = TextEditingController();
 
+  // ignore: unused_field
   Map<String, dynamic>? _vehicle;
   List<Map<String, dynamic>> _vehiclePhotos = [];
 
@@ -59,27 +61,34 @@ class OverviewTabState extends State<OverviewTab> {
   // --- UPDATED: This now loads reminders too ---
   Future<void> loadData() async {
     try {
+      // 1. Get all data
       final data = await Future.wait([
         dbHelper.queryVehicleById(widget.vehicleId),
         dbHelper.queryRemindersForVehicle(widget.vehicleId),
         dbHelper.queryPhotosForParent(widget.vehicleId, 'vehicle'),
+        dbHelper.queryVehiclePapersForVehicle(
+          widget.vehicleId,
+        ), // <-- NEW: Get papers
       ]);
       if (!mounted) return;
+
       final vehicleData = data[0] as Map<String, dynamic>?;
-      final allReminders = data[1] as List<Map<String, dynamic>>;
+      final serviceReminders = data[1] as List<Map<String, dynamic>>;
       final photos = data[2] as List<Map<String, dynamic>>;
+      final paperReminders = data[3] as List<Map<String, dynamic>>; // <-- NEW
 
       if (vehicleData == null) {
         throw Exception("Vehicle data not found (ID: ${widget.vehicleId})");
       }
 
-      // --- NEW: Process Reminders ---
+      // --- 2. Combine and Process Reminders ---
       _currentOdo = vehicleData[DatabaseHelper.columnCurrentOdometer] ?? 0;
       final String today = DateTime.now().toIso8601String().split('T')[0];
       final List<Map<String, dynamic>> overdue = [];
       final List<Map<String, dynamic>> comingSoon = [];
 
-      for (var reminder in allReminders) {
+      // Add service/manual reminders
+      for (var reminder in serviceReminders) {
         bool isDateOverdue = false;
         bool isOdoOverdue = false;
         final String? dueDate = reminder[DatabaseHelper.columnDueDate];
@@ -94,6 +103,19 @@ class OverviewTabState extends State<OverviewTab> {
           overdue.add(reminder);
         } else {
           comingSoon.add(reminder);
+        }
+      }
+
+      // --- NEW: Add paper reminders ---
+      for (var paper in paperReminders) {
+        final String? expiryDate = paper[DatabaseHelper.columnPaperExpiryDate];
+        if (expiryDate != null && expiryDate.isNotEmpty) {
+          final paperReminder = {...paper, 'isPaperReminder': true};
+          if (expiryDate.compareTo(today) < 0) {
+            overdue.add(paperReminder);
+          } else {
+            comingSoon.add(paperReminder);
+          }
         }
       }
       // --- END NEW ---
@@ -120,10 +142,12 @@ class OverviewTabState extends State<OverviewTab> {
   }
 
   void _saveOdometer() async {
-    // (This function is unchanged, but calls loadData)
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
+
+    // 1. Save the new odometer (unchanged)
     await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
+
     scaffoldMessenger.showSnackBar(
       const SnackBar(
         content: Text('Odometer updated!'),
@@ -133,7 +157,37 @@ class OverviewTabState extends State<OverviewTab> {
     if (mounted) {
       FocusScope.of(context).unfocus();
     }
-    // We must call loadData() to refresh reminders and odo
+
+    // --- THIS IS THE FIX ---
+    // 2. Get all *pending* reminders
+    final allReminders = await dbHelper.queryRemindersForVehicle(
+      widget.vehicleId,
+    );
+
+    for (var reminder in allReminders) {
+      final dueOdometer = reminder[DatabaseHelper.columnDueOdometer];
+
+      // 3. If this reminder is now due...
+      if (dueOdometer != null && newOdometer >= dueOdometer) {
+        final int reminderId = reminder[DatabaseHelper.columnId];
+        final String templateName =
+            reminder['template_name'] ??
+            reminder[DatabaseHelper.columnNotes] ??
+            'Service';
+        print("  > Odometer due for '$templateName'! Sending notification.");
+
+        // 4. Send notification
+        await NotificationService().showImmediateReminder(
+          id: reminderId,
+          title: 'Vehicle Service Due',
+          body:
+              'Your "$templateName" service is due! (Reached $dueOdometer km).',
+        );
+      }
+    }
+    // --- END OF FIX ---
+
+    // 6. Reload all data
     loadData();
   }
 
@@ -494,47 +548,78 @@ class OverviewTabState extends State<OverviewTab> {
     SettingsProvider settings, {
     bool isOverdue = false,
   }) {
-    String dueDate = reminder[DatabaseHelper.columnDueDate] ?? 'N/A';
-    String dueOdo =
-        reminder[DatabaseHelper.columnDueOdometer]?.toString() ?? 'N/A';
-
-    // --- FIX: Use template_name first, then fall back to notes ---
-    String title =
-        reminder['template_name'] ??
-        reminder[DatabaseHelper.columnNotes] ??
-        'Reminder';
-
+    bool isPaper = reminder['isPaperReminder'] ?? false;
+    String title;
+    String dueDate;
+    String dueOdo;
+    IconData icon;
+    if (isPaper) {
+      // It's a Vehicle Paper
+      title = reminder[DatabaseHelper.columnPaperType] ?? 'Paper';
+      dueDate = reminder[DatabaseHelper.columnPaperExpiryDate] ?? 'N/A';
+      dueOdo = 'N/A'; // Papers don't have odometer
+      icon = _getIconForPaperType(title);
+    } else {
+      dueDate = reminder[DatabaseHelper.columnDueDate] ?? 'N/A';
+      dueOdo = reminder[DatabaseHelper.columnDueOdometer]?.toString() ?? 'N/A';
+      title =
+          reminder['template_name'] ??
+          reminder[DatabaseHelper.columnNotes] ??
+          'Reminder';
+      icon = Icons.warning_amber_rounded;
+    }
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       elevation: 2,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border(
-            left: BorderSide(
-              color: isOverdue ? Colors.red : Colors.orange,
-              width: 4,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isOverdue ? Colors.red[700] : Colors.orange[700],
+              size: 30,
             ),
-          ),
-        ),
-        child: ListTile(
-          leading: Icon(
-            Icons.notifications_active,
-            color: isOverdue ? Colors.red[700] : Colors.orange,
-          ),
-          title: Text(
-            title,
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          subtitle: Text(
-            'Date: $dueDate\nOdometer: $dueOdo ${settings.unitType}',
-          ),
-          isThreeLine: true,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+            const SizedBox(width: 12),
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  if (isPaper)
+                    Text(
+                      'Expires: $dueDate', // Simpler text for papers
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    )
+                  else
+                    Text(
+                      'Due: $dueDate   |   $dueOdo ${settings.unitType}',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Theme.of(context).textTheme.bodySmall?.color,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            if (!isPaper) ...[
               IconButton(
-                icon: const Icon(Icons.snooze, color: Colors.blue),
+                icon: Icon(Icons.snooze, color: Colors.blue[600]),
                 tooltip: 'Snooze Reminder',
                 onPressed: () {
                   _showSnoozeDialog(reminder, settings);
@@ -548,7 +633,12 @@ class OverviewTabState extends State<OverviewTab> {
                 tooltip: 'Mark as Complete',
                 onPressed: () async {
                   int id = reminder[DatabaseHelper.columnId];
-                  await dbHelper.deleteReminder(id);
+
+                  // --- THIS IS THE FIX ---
+                  // Instead of deleting, we update the status
+                  await dbHelper.updateReminderStatus(id, 'completed');
+                  // --- END OF FIX ---
+
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -561,9 +651,22 @@ class OverviewTabState extends State<OverviewTab> {
                 },
               ),
             ],
-          ),
+          ],
         ),
       ),
     );
+  }
+
+  IconData _getIconForPaperType(String type) {
+    switch (type.toLowerCase()) {
+      case 'insurance':
+        return Icons.shield;
+      case 'puc':
+        return Icons.cloud_outlined;
+      case 'registration':
+        return Icons.badge;
+      default:
+        return Icons.description;
+    }
   }
 }

@@ -41,6 +41,16 @@ class DatabaseHelper {
   static const columnTemplateId = 'template_id';
   static const columnNotes = 'notes';
 
+  // --- VehiclePapers Table Columns ---
+  static const tableVehiclePapers = 'vehicle_papers';
+  static const columnPaperType = 'type'; // e.g., 'Insurance', 'PUC'
+  static const columnReferenceNo = 'reference_no'; // <-- RENAMED
+  static const columnDescription = 'description'; // <-- NEW
+  static const columnCost = 'cost'; // <-- NEW
+  static const columnProviderName = 'provider_name'; // <-- ADD THIS
+  static const columnPaperExpiryDate = 'expiry_date';
+  static const columnFilePath = 'file_path';
+
   // --- (All other column names are unchanged) ---
   static const columnServiceId = 'service_id';
   static const columnName = 'name';
@@ -61,6 +71,9 @@ class DatabaseHelper {
   static const columnParentType = 'parent_type';
   static const columnParentId = 'parent_id';
   static const columnUri = 'uri';
+  static const columnStatus = 'status'; // Will be 'pending' or 'completed'
+  static const columnCompletedByServiceId =
+      'completed_by_service_id'; // Links to the service that completed it
 
   // --- Singleton Class Setup (unchanged) ---
   DatabaseHelper._privateConstructor();
@@ -171,6 +184,8 @@ class DatabaseHelper {
         $columnLeadTimeDays INTEGER,
         $columnLeadTimeKm INTEGER,
         $columnLastNotifiedAt TEXT,
+        $columnStatus TEXT NOT NULL DEFAULT 'pending', 
+        $columnCompletedByServiceId INTEGER,
         FOREIGN KEY ($columnVehicleId) REFERENCES $tableVehicles ($columnId) ON DELETE CASCADE,
         FOREIGN KEY ($columnTemplateId) REFERENCES $tableServiceTemplates ($columnId) ON DELETE SET NULL
       )
@@ -192,6 +207,21 @@ class DatabaseHelper {
         $columnParentType TEXT NOT NULL,
         $columnParentId INTEGER NOT NULL,
         $columnUri TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE $tableVehiclePapers (
+        $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $columnVehicleId INTEGER NOT NULL,
+        $columnPaperType TEXT NOT NULL,
+        $columnReferenceNo TEXT, 
+        $columnProviderName TEXT, 
+        $columnDescription TEXT,
+        $columnCost REAL,
+        $columnPaperExpiryDate TEXT,
+        $columnFilePath TEXT, 
+        FOREIGN KEY ($columnVehicleId) REFERENCES $tableVehicles ($columnId) ON DELETE CASCADE
       )
     ''');
   }
@@ -368,7 +398,7 @@ class DatabaseHelper {
         t.$columnName AS template_name
       FROM $tableReminders r
       LEFT JOIN $tableServiceTemplates t ON r.$columnTemplateId = t.$columnId
-      WHERE r.$columnVehicleId = ?
+      WHERE r.$columnVehicleId = ? AND r.$columnStatus = 'pending'
       ORDER BY r.$columnDueDate ASC, r.$columnDueOdometer ASC
     ''';
 
@@ -910,9 +940,159 @@ class DatabaseHelper {
       FROM $tableReminders r
       JOIN $tableVehicles v ON v.$columnId = r.$columnVehicleId
       LEFT JOIN $tableServiceTemplates t ON t.$columnId = r.$columnTemplateId
+      WHERE r.$columnStatus = 'pending'
       ORDER BY v.$columnMake, v.$columnModel, r.$columnDueDate ASC, r.$columnDueOdometer ASC
     ''';
 
+    return await db.rawQuery(sql);
+  }
+
+  // Marks a single reminder as "completed"
+  Future<int> updateReminderStatus(int id, String status) async {
+    Database db = await instance.database;
+    return await db.update(
+      tableReminders,
+      {columnStatus: status},
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Finds all 'pending' reminders for a template and marks them as 'completed'
+  // It also tags *which* service completed it
+  Future<int> completeRemindersByTemplate(
+    int vehicleId,
+    int templateId,
+    int serviceId,
+  ) async {
+    Database db = await instance.database;
+    return await db.update(
+      tableReminders,
+      {columnStatus: 'completed', columnCompletedByServiceId: serviceId},
+      where:
+          '$columnVehicleId = ? AND $columnTemplateId = ? AND $columnStatus = ?',
+      whereArgs: [vehicleId, templateId, 'pending'],
+    );
+  }
+
+  // "Un-completes" any reminder that was completed by a specific service
+  Future<int> uncompleteRemindersByService(int serviceId) async {
+    Database db = await instance.database;
+    return await db.update(
+      tableReminders,
+      {columnStatus: 'pending', columnCompletedByServiceId: null},
+      where: '$columnCompletedByServiceId = ?',
+      whereArgs: [serviceId],
+    );
+  }
+
+  Future<List<Map<String, dynamic>>>
+  queryAllPendingRemindersWithVehicle() async {
+    Database db = await instance.database;
+    final String sql =
+        '''
+    SELECT 
+      r.*,
+      v.$columnCurrentOdometer, 
+      t.$columnName AS template_name
+    FROM $tableReminders r
+    JOIN $tableVehicles v ON v.$columnId = r.$columnVehicleId
+    LEFT JOIN $tableServiceTemplates t ON t.$columnId = r.$columnTemplateId
+    WHERE r.$columnStatus = 'pending'
+  ''';
+    return await db.rawQuery(sql);
+  }
+
+  // --- VEHICLE PAPERS-SPECIFIC METHODS ---
+
+  Future<int> insertVehiclePaper(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    return await db.insert(tableVehiclePapers, row);
+  }
+
+  Future<int> updateVehiclePaper(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    int id = row[columnId];
+    return await db.update(
+      tableVehiclePapers,
+      row,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteVehiclePaper(int id) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableVehiclePapers,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Get all papers for a SINGLE vehicle
+  Future<List<Map<String, dynamic>>> queryVehiclePapersForVehicle(
+    int vehicleId,
+  ) async {
+    Database db = await instance.database;
+    final String sql =
+        '''
+    SELECT 
+      d.*,
+      v.$columnMake, 
+      v.$columnModel
+    FROM $tableVehiclePapers d
+    JOIN $tableVehicles v ON v.$columnId = d.$columnVehicleId
+    WHERE d.$columnVehicleId = ?
+    ORDER BY d.$columnPaperExpiryDate ASC
+  ''';
+    return await db.rawQuery(sql, [vehicleId]);
+  }
+
+  // Get papers expiring *on this day* for the notification task
+  Future<List<Map<String, dynamic>>> queryVehiclePapersExpiringOn(
+    String date,
+  ) async {
+    Database db = await instance.database;
+    final String sql =
+        '''
+    SELECT 
+      d.*,
+      v.$columnMake, 
+      v.$columnModel
+    FROM $tableVehiclePapers d
+    JOIN $tableVehicles v ON v.$columnId = d.$columnVehicleId
+    WHERE d.$columnPaperExpiryDate = ?
+  ''';
+    return await db.rawQuery(sql, [date]);
+  }
+
+  // Gets a single vehicle paper by its ID
+  Future<Map<String, dynamic>?> queryVehiclePaperById(int id) async {
+    Database db = await instance.database;
+    List<Map<String, dynamic>> result = await db.query(
+      tableVehiclePapers,
+      where: '$columnId = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return result.isNotEmpty ? result.first : null;
+  }
+
+  Future<List<Map<String, dynamic>>> queryAllExpiringPapers() async {
+    Database db = await instance.database;
+    final String sql =
+        '''
+      SELECT 
+        d.*,
+        v.$columnMake, 
+        v.$columnModel,
+        v.$columnCurrentOdometer
+      FROM $tableVehiclePapers d
+      JOIN $tableVehicles v ON v.$columnId = d.$columnVehicleId
+      WHERE d.$columnPaperExpiryDate IS NOT NULL AND d.$columnPaperExpiryDate != ''
+      ORDER BY v.$columnMake, v.$columnModel, d.$columnPaperExpiryDate ASC
+    ''';
     return await db.rawQuery(sql);
   }
 }

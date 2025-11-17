@@ -135,7 +135,10 @@ class _VendorListScreenState extends State<VendorListScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.black,
+            ),
             onPressed: () async {
               await dbHelper.deleteVendor(id);
               Navigator.of(ctx).pop();

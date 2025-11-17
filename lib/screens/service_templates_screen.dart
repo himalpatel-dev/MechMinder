@@ -141,7 +141,10 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.black,
+            ),
             onPressed: () async {
               await dbHelper.deleteServiceTemplate(id);
               Navigator.of(ctx).pop();

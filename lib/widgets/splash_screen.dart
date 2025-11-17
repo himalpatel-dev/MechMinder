@@ -14,28 +14,79 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     print("--- Background Task Started ---");
 
-    // We must initialize the database *again* in this
-    // separate background environment.
-    await DatabaseHelper.instance.database;
+    final dbHelper = DatabaseHelper.instance;
+    await dbHelper.database;
     await NotificationService().initialize();
 
     final String today = DateTime.now().toIso8601String().split('T')[0];
-    print("Checking for reminders due on: $today");
+    print("Checking for reminders and papers due on: $today");
 
-    final reminders = await DatabaseHelper.instance.queryRemindersDueOn(today);
-    print("Found ${reminders.length} reminders due today.");
+    // --- 1. Check for Service Reminders ---
+    final allReminders = await dbHelper.queryAllPendingRemindersWithVehicle();
 
-    for (final reminder in reminders) {
-      final String appName = inputData?['appName'] ?? 'MechMinder';
-      final serviceName = reminder['template_name'] ?? 'Service';
-      final body = 'Your "$serviceName" service is due today!';
+    for (final reminder in allReminders) {
+      final int reminderId = reminder[DatabaseHelper.columnId];
+      bool isDue = false;
+
+      // Check if date is due
+      final String? dueDate = reminder[DatabaseHelper.columnDueDate];
+      if (dueDate != null && dueDate.compareTo(today) == 0) {
+        // Only on the exact day
+        isDue = true;
+      }
+
+      // Check if odometer is due
+      final int? dueOdo = reminder[DatabaseHelper.columnDueOdometer];
+      final int currentOdo =
+          reminder[DatabaseHelper.columnCurrentOdometer] ?? 0;
+      if (dueOdo != null && currentOdo >= dueOdo) {
+        isDue = true;
+      }
+
+      if (isDue) {
+        final String appName = inputData?['appName'] ?? 'MechMinder';
+        final serviceName =
+            reminder['template_name'] ??
+            reminder[DatabaseHelper.columnNotes] ??
+            'Service';
+        final body = 'Your "$serviceName" service is due!';
+
+        print(
+          "  > Reminder $serviceName (ID: $reminderId) is DUE. Sending notification.",
+        );
+
+        await NotificationService().showImmediateReminder(
+          id: reminderId,
+          title: appName,
+          body: body,
+        );
+      }
+    }
+
+    // --- 2. NEW: Check for Expiring Papers ---
+    final expiringPapers = await dbHelper.queryVehiclePapersExpiringOn(today);
+    print("Found ${expiringPapers.length} papers expiring today.");
+
+    for (final paper in expiringPapers) {
+      final String vehicleName =
+          '${paper[DatabaseHelper.columnMake]} ${paper[DatabaseHelper.columnModel]}';
+      final String paperType = paper[DatabaseHelper.columnPaperType] ?? 'Paper';
+      final String body = 'Your $paperType for $vehicleName expires today!';
+
+      print(
+        "  > Paper $paperType (ID: ${paper[DatabaseHelper.columnId]}) is EXPIRING. Sending notification.",
+      );
+
+      // Use a high-level unique ID for paper notifications
+      int notificationId = 100000 + (paper[DatabaseHelper.columnId] as int);
 
       await NotificationService().showImmediateReminder(
-        id: reminder[DatabaseHelper.columnId],
-        title: appName,
+        id: notificationId,
+        title: 'Vehicle Paper Expiring',
         body: body,
       );
     }
+    // --- END NEW ---
 
     print("--- Background Task Complete ---");
     return Future.value(true);

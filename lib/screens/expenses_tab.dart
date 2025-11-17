@@ -74,144 +74,153 @@ class _ExpensesTabState extends State<ExpensesTab> {
       builder: (context) {
         return AlertDialog(
           title: Text(isEditing ? 'Edit Expense' : 'Add New Expense'),
-          content: SingleChildScrollView(
-            // --- THIS IS THE FIX: Wrap content in a Form ---
-            child: Form(
-              key: _expenseFormKey, // Assign the key
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: _dateController,
-                    decoration: InputDecoration(
-                      labelText: 'Date',
-                      suffixIcon: Icon(
-                        Icons.calendar_today,
-                        color: settings.primaryColor,
-                      ),
-                    ),
-                    readOnly: true,
-                    onTap: () async {
-                      DateTime? pickedDate = await showDatePicker(
-                        context: context,
-                        initialDate:
-                            DateTime.tryParse(_dateController.text) ??
-                            DateTime.now(),
-                        firstDate: DateTime(2000),
-                        lastDate: DateTime(2101),
-                      );
-                      if (pickedDate != null) {
-                        _dateController.text = pickedDate
-                            .toIso8601String()
-                            .split('T')[0];
-                      }
-                    },
-                  ),
-                  Autocomplete<String>(
-                    initialValue: TextEditingValue(
-                      text: _categoryController.text,
-                    ),
-                    optionsBuilder: (TextEditingValue textEditingValue) {
-                      if (textEditingValue.text == '') {
-                        return const Iterable<String>.empty();
-                      }
-                      return _allCategories.where((String option) {
-                        return option.toLowerCase().contains(
-                          textEditingValue.text.toLowerCase(),
-                        );
-                      });
-                    },
-                    onSelected: (String selection) {
-                      _categoryController.text = selection;
-                    },
-                    fieldViewBuilder:
-                        (
-                          BuildContext context,
-                          TextEditingController fieldController,
-                          FocusNode fieldFocusNode,
-                          VoidCallback onFieldSubmitted,
-                        ) {
-                          _categoryController.text = fieldController.text;
-                          fieldController.addListener(() {
-                            _categoryController.text = fieldController.text;
-                          });
+          content: SizedBox(
+            // --- THIS IS THE FIX ---
+            // You can set any width you want.
+            // Using MediaQuery makes it responsive (e.g., 90% of screen width)
+            width: MediaQuery.of(context).size.width * 0.9,
 
-                          return TextFormField(
-                            controller: fieldController,
-                            focusNode: fieldFocusNode,
-                            decoration: const InputDecoration(
-                              labelText: 'Category (e.g., Fuel, Insurance)',
-                            ),
-                            // --- THIS IS THE FIX: Add validator ---
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Please enter a category';
-                              }
-                              return null;
-                            },
+            // --- END OF FIX ---
+            child: SingleChildScrollView(
+              // --- THIS IS THE FIX: Wrap content in a Form ---
+              child: Form(
+                key: _expenseFormKey, // Assign the key
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: _dateController,
+                      decoration: InputDecoration(
+                        labelText: 'Date',
+                        suffixIcon: Icon(
+                          Icons.calendar_today,
+                          color: settings.primaryColor,
+                        ),
+                      ),
+                      readOnly: true,
+                      onTap: () async {
+                        DateTime? pickedDate = await showDatePicker(
+                          context: context,
+                          initialDate:
+                              DateTime.tryParse(_dateController.text) ??
+                              DateTime.now(),
+                          firstDate: DateTime(2000),
+                          lastDate: DateTime(2101),
+                        );
+                        if (pickedDate != null) {
+                          _dateController.text = pickedDate
+                              .toIso8601String()
+                              .split('T')[0];
+                        }
+                      },
+                    ),
+                    Autocomplete<String>(
+                      initialValue: TextEditingValue(
+                        text: _categoryController.text,
+                      ),
+                      optionsBuilder: (TextEditingValue textEditingValue) {
+                        if (textEditingValue.text == '') {
+                          return const Iterable<String>.empty();
+                        }
+                        return _allCategories.where((String option) {
+                          return option.toLowerCase().contains(
+                            textEditingValue.text.toLowerCase(),
                           );
-                        },
-                    optionsViewBuilder:
-                        (
-                          BuildContext context,
-                          AutocompleteOnSelected<String> onSelected,
-                          Iterable<String> options,
-                        ) {
-                          return Align(
-                            alignment: Alignment.topLeft,
-                            child: Material(
-                              elevation: 4.0,
-                              child: ConstrainedBox(
-                                constraints: const BoxConstraints(
-                                  maxHeight: 200,
-                                ),
-                                child: ListView.builder(
-                                  padding: EdgeInsets.zero,
-                                  shrinkWrap: true,
-                                  itemCount: options.length,
-                                  itemBuilder:
-                                      (BuildContext context, int index) {
-                                        final String option = options.elementAt(
-                                          index,
-                                        );
-                                        return InkWell(
-                                          onTap: () {
-                                            onSelected(option);
-                                          },
-                                          child: ListTile(title: Text(option)),
-                                        );
-                                      },
+                        });
+                      },
+                      onSelected: (String selection) {
+                        _categoryController.text = selection;
+                      },
+                      fieldViewBuilder:
+                          (
+                            BuildContext context,
+                            TextEditingController fieldController,
+                            FocusNode fieldFocusNode,
+                            VoidCallback onFieldSubmitted,
+                          ) {
+                            _categoryController.text = fieldController.text;
+                            fieldController.addListener(() {
+                              _categoryController.text = fieldController.text;
+                            });
+
+                            return TextFormField(
+                              controller: fieldController,
+                              focusNode: fieldFocusNode,
+                              decoration: const InputDecoration(
+                                labelText: 'Category (e.g., Fuel, Insurance)',
+                              ),
+                              // --- THIS IS THE FIX: Add validator ---
+                              validator: (value) {
+                                if (value == null || value.isEmpty) {
+                                  return 'Please enter a category';
+                                }
+                                return null;
+                              },
+                            );
+                          },
+                      optionsViewBuilder:
+                          (
+                            BuildContext context,
+                            AutocompleteOnSelected<String> onSelected,
+                            Iterable<String> options,
+                          ) {
+                            return Align(
+                              alignment: Alignment.topLeft,
+                              child: Material(
+                                elevation: 4.0,
+                                child: ConstrainedBox(
+                                  constraints: const BoxConstraints(
+                                    maxHeight: 200,
+                                  ),
+                                  child: ListView.builder(
+                                    padding: EdgeInsets.zero,
+                                    shrinkWrap: true,
+                                    itemCount: options.length,
+                                    itemBuilder:
+                                        (BuildContext context, int index) {
+                                          final String option = options
+                                              .elementAt(index);
+                                          return InkWell(
+                                            onTap: () {
+                                              onSelected(option);
+                                            },
+                                            child: ListTile(
+                                              title: Text(option),
+                                            ),
+                                          );
+                                        },
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                  ),
-                  TextFormField(
-                    controller: _amountController,
-                    decoration: InputDecoration(
-                      labelText: 'Amount',
-                      prefixText: settings.currencySymbol,
+                            );
+                          },
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+                    TextFormField(
+                      controller: _amountController,
+                      decoration: InputDecoration(
+                        labelText: 'Amount',
+                        prefixText: settings.currencySymbol,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      // --- THIS IS THE FIX: Add validator ---
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Please enter an amount';
+                        }
+                        if (double.tryParse(value) == null) {
+                          return 'Please enter a valid number';
+                        }
+                        return null;
+                      },
                     ),
-                    // --- THIS IS THE FIX: Add validator ---
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Please enter an amount';
-                      }
-                      if (double.tryParse(value) == null) {
-                        return 'Please enter a valid number';
-                      }
-                      return null;
-                    },
-                  ),
-                  TextFormField(
-                    controller: _notesController,
-                    decoration: const InputDecoration(labelText: 'Notes'),
-                  ),
-                ],
+                    TextFormField(
+                      controller: _notesController,
+                      decoration: const InputDecoration(labelText: 'Notes'),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

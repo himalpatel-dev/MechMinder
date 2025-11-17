@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:mechminder/screens/vehicle_papers_screen.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
@@ -24,7 +25,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   Map<String, dynamic>? _vehicle;
   bool _isLoading = true;
   int _dataVersion = 0;
-
   // We need to fetch the odometer here to pass it to the service screen
   // ignore: unused_field
   int _currentOdometer = 0;
@@ -34,7 +34,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   void initState() {
     super.initState();
     // --- UPDATED: We now have 6 tabs ---
-    _tabController = TabController(length: 4, vsync: this);
+    _tabController = TabController(length: 5, vsync: this);
     _loadVehicleDetails();
   }
 
@@ -72,7 +72,10 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.black,
+            ),
             onPressed: () async {
               await dbHelper.deleteVehicle(widget.vehicleId);
               if (mounted) {
@@ -166,6 +169,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
                 Tab(text: 'Overview'),
                 Tab(text: 'Services'),
                 Tab(text: 'Expenses'),
+                Tab(text: 'Papers'),
                 Tab(text: 'Stats'),
               ],
             ),
@@ -182,6 +186,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           ),
           ServiceHistoryTab(vehicleId: widget.vehicleId),
           ExpensesTab(vehicleId: widget.vehicleId),
+          VehiclePapersScreen(vehicleId: widget.vehicleId), // <-- NEW PAGE
           StatsTab(vehicleId: widget.vehicleId),
         ],
       ),

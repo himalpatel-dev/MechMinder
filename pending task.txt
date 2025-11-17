@@ -1,5 +1,3 @@
-one problem is that when i add new serive that is now upcoming is on based service id then old same template not removed
-overview page no date based reminders and no odometer based reminders not showing anything 
 ✅ 1. Fuel Tracking & Mileage Analytics
 
 Let users log fuel purchases:
@@ -13,45 +11,6 @@ Show charts: mileage trend, fuel expense trend.
 ➡ Why: Improves vehicle cost understanding.
 
 --merge this 2,3,4 to comman and also add this data exiprty in upcoming 
-
-✅ 2. Insurance & PUC Management
-
-Let users add:
-
-Insurance policy details
-
-Expiry date reminder
-
-PUC certificate with photo & expiry alert
-
-➡ Your app becomes a full compliance tracker.
-
-✅ 3. Tyre Management
-
-Track tyre data:
-
-Buy date & odometer
-
-Next rotation due
-
-Next replacement due
-
-Tyre wear log (marks or stars)
-
-➡ Very useful for cars & bikes.
-
-✅ 4. Battery Health Tracker
-
-Fields:
-
-Purchase date
-
-Warranty expiry
-
-Expected life
-
-Voltage logs (optional)
-
 
 
 ✅ 5. Document Vault (Digital Folder)
@@ -71,22 +30,3 @@ Warranty cards
 Loan documents
 
 Encrypted and secured.
-
-
-✅ 6. Trip / Expense Log
-
-User can record:
-
-Long trips
-
-Toll charges
-
-Fuel used
-
-Total distance
-
-Trip summary PDF
-
-Perfect for business users.
-
-✅ 7.Make Yearly Rerort and also 1 report as per this vendorwise serivce reprot
