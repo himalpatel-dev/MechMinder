@@ -158,7 +158,10 @@ class AppSettingsScreen extends StatelessWidget {
               child: const Text('Cancel'),
             ),
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.redAccent,
+                foregroundColor: Colors.black,
+              ),
               onPressed: () => Navigator.of(ctx).pop(true),
               child: const Text('Wipe and Restore'),
             ),

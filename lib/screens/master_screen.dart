@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
 import 'vendor_list_screen.dart';
 import 'service_templates_screen.dart';
+import 'documents_screen.dart';
 
 class MasterScreen extends StatelessWidget {
   const MasterScreen({super.key});
@@ -48,6 +49,22 @@ class MasterScreen extends StatelessWidget {
                 context,
                 MaterialPageRoute(
                   builder: (context) => const ServiceTemplatesScreen(),
+                ),
+              );
+            },
+          ),
+
+          // --- 3. Manage Documents Card ---
+          _buildMasterCard(
+            context: context,
+            icon: Icons.handyman,
+            title: 'Documents',
+            color: settings.primaryColor,
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const DocumentsScreen(),
                 ),
               );
             },

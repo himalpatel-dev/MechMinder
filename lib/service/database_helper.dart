@@ -51,6 +51,10 @@ class DatabaseHelper {
   static const columnPaperExpiryDate = 'expiry_date';
   static const columnFilePath = 'file_path';
 
+  // --- Documents (General) Table Columns ---
+  static const tableDocuments = 'documents';
+  static const columnDocType = 'doc_type';
+
   // --- (All other column names are unchanged) ---
   static const columnServiceId = 'service_id';
   static const columnName = 'name';
@@ -224,6 +228,17 @@ class DatabaseHelper {
         FOREIGN KEY ($columnVehicleId) REFERENCES $tableVehicles ($columnId) ON DELETE CASCADE
       )
     ''');
+
+    await db.execute('''
+          CREATE TABLE $tableDocuments (
+            $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
+            $columnVehicleId INTEGER, 
+            $columnDocType TEXT,
+            $columnDescription TEXT,
+            $columnFilePath TEXT NOT NULL, 
+            FOREIGN KEY ($columnVehicleId) REFERENCES $tableVehicles ($columnId) ON DELETE CASCADE
+          )
+        ''');
   }
 
   // --- FIX 3: REMOVE THE _onUpgrade FUNCTION ENTIRELY ---
@@ -1094,5 +1109,49 @@ class DatabaseHelper {
       ORDER BY v.$columnMake, v.$columnModel, d.$columnPaperExpiryDate ASC
     ''';
     return await db.rawQuery(sql);
+  }
+
+  // --- DOCUMENT-SPECIFIC METHODS ---
+
+  Future<int> insertGeneralDocument(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    return await db.insert(tableDocuments, row);
+  }
+
+  Future<int> deleteGeneralDocument(int id) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableDocuments,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Get all general documents, joined with vehicle info
+  Future<List<Map<String, dynamic>>> queryAllGeneralDocuments() async {
+    Database db = await instance.database;
+    final String sql =
+        '''
+    SELECT 
+      d.*,
+      v.$columnMake, 
+      v.$columnModel
+    FROM $tableDocuments d
+    LEFT JOIN $tableVehicles v ON v.$columnId = d.$columnVehicleId
+    ORDER BY d.$columnId DESC
+  ''';
+    return await db.rawQuery(sql);
+  }
+
+  // Gets a single document by its ID
+  Future<Map<String, dynamic>?> queryGeneralDocumentById(int id) async {
+    Database db = await instance.database;
+    List<Map<String, dynamic>> result = await db.query(
+      tableDocuments,
+      where: '$columnId = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    return result.isNotEmpty ? result.first : null;
   }
 }
