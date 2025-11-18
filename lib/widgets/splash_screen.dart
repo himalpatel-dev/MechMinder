@@ -5,6 +5,9 @@ import '../screens/home_screen.dart'; // Import your main home screen
 import '../service/database_helper.dart';
 import '../service/notification_service.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 // --- END IMPORTS ---
 
 // --- THIS IS THE BACKGROUND TASK ---
@@ -12,11 +15,47 @@ import 'package:workmanager/workmanager.dart';
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    print("--- Background Task Started ---");
-
     final dbHelper = DatabaseHelper.instance;
     await dbHelper.database;
     await NotificationService().initialize();
+    await Firebase.initializeApp();
+
+    if (task == "sync_install_data") {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final bool isSynced = prefs.getBool('install_event_synced') ?? false;
+
+        // If not synced yet, do it now!
+        if (!isSynced) {
+          final String? installId = prefs.getString('app_install_id');
+
+          // We re-create the basic data needed
+          // (Note: We can't get full device info easily in background sometimes,
+          // so we send a basic ping or rely on the cached Firestore write)
+
+          if (installId != null) {
+            final firestore = FirebaseFirestore.instance;
+
+            // Just accessing Firestore here is often enough to flush the
+            // pending write queue we created earlier!
+            await firestore.enableNetwork();
+
+            // We can also force a write just to be sure
+            await firestore.collection('app_installs').doc(installId).update({
+              'background_sync': true,
+              'synced_at': DateTime.now().toIso8601String(),
+            });
+
+            await prefs.setBool('install_event_synced', true);
+            print("DATA SYNCED SUCCESSFULLY IN BACKGROUND");
+          }
+        }
+        return Future.value(true);
+      } catch (e) {
+        print("Background sync failed: $e");
+        return Future.value(false); // Returning false makes it retry later
+      }
+    }
 
     final String today = DateTime.now().toIso8601String().split('T')[0];
     print("Checking for reminders and papers due on: $today");
