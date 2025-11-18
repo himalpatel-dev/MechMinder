@@ -13,7 +13,7 @@ class SettingsProvider with ChangeNotifier {
   // --- Internal state ---
   String _unitType = 'km';
   String _currencySymbol = '₹';
-  ThemeMode _themeMode = ThemeMode.system;
+  ThemeMode _themeMode = ThemeMode.dark;
 
   // --- NEW: Add a variable for the color ---
   Color _primaryColor = Colors.blue; // Default color
@@ -36,7 +36,7 @@ class SettingsProvider with ChangeNotifier {
 
     // --- FIX: Simplified theme loading ---
     // Default to 'light' if no setting is saved
-    final String themeName = _prefs?.getString(_keyTheme) ?? 'light';
+    final String themeName = _prefs?.getString(_keyTheme) ?? 'dark';
     if (themeName == 'dark') {
       _themeMode = ThemeMode.dark;
     } else {

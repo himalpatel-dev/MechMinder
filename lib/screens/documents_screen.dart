@@ -318,7 +318,10 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
             child: const Text('Cancel'),
           ),
           ElevatedButton(
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.black,
+            ),
             onPressed: () async {
               final doc = await dbHelper.queryGeneralDocumentById(id);
               if (doc != null && doc[DatabaseHelper.columnFilePath] != null) {
@@ -374,29 +377,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       ),
                       clipBehavior: Clip.antiAlias,
                       decoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(
-                            color: settings.primaryColor,
-                            width: 5,
-                          ),
-                        ),
-                        borderRadius: const BorderRadius.only(
-                          topRight: Radius.circular(12),
-                          bottomRight: Radius.circular(12),
-                        ),
+                        color: Theme.of(context).highlightColor,
+                        borderRadius: BorderRadius.circular(12),
                       ),
                       child: Material(
-                        color: Theme.of(context).cardColor,
+                        color: Theme.of(context).highlightColor,
                         elevation: 2,
-                        borderRadius: const BorderRadius.only(
-                          topRight: Radius.circular(12),
-                          bottomRight: Radius.circular(12),
-                        ),
+                        borderRadius: BorderRadius.circular(12),
                         child: InkWell(
-                          borderRadius: const BorderRadius.only(
-                            topRight: Radius.circular(12),
-                            bottomRight: Radius.circular(12),
-                          ),
                           onTap: () {
                             setState(() {
                               if (isExpanded) {
@@ -441,7 +429,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           if (isExpanded)
                             ...documentsForGroup.map((doc) {
                               return _buildDocumentCard(doc, settings);
-                            }).toList(),
+                            }),
                         ],
                       ),
                     ),
@@ -468,68 +456,61 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     final String? filePath = doc[DatabaseHelper.columnFilePath];
 
     return Card(
-      margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      margin: const EdgeInsets.fromLTRB(18, 4, 18, 8),
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(12.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  _getIconForDocType(type),
-                  color: settings.primaryColor,
-                  size: 30,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        type,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      if (description != null && description.isNotEmpty) ...[
-                        const SizedBox(height: 4),
-                        Text(
-                          description,
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[800],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (filePath != null)
-                  IconButton(
-                    icon: const Icon(Icons.open_in_new, color: Colors.blue),
-                    tooltip: 'Open File',
-                    onPressed: () async {
-                      final result = await OpenFile.open(filePath);
-                      if (result.type != ResultType.done) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Error: ${result.message}')),
-                        );
-                      }
-                    },
-                  ),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border(
+            left: BorderSide(
+              // keep original color preference — used settings.primaryColor
+              color: settings.primaryColor,
+              width: 4,
+            ),
+          ),
+        ),
+        child: ListTile(
+          leading: Icon(
+            _getIconForDocType(type),
+            color: settings.primaryColor,
+            size: 30,
+          ),
+          title: Text(
+            type,
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
+          subtitle: (description != null && description.isNotEmpty)
+              ? Text(
+                  description,
+                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
+                )
+              : null,
+          // keep single-line behavior if no subtitle; if description long, ListTile will handle it
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (filePath != null)
                 IconButton(
-                  icon: const Icon(Icons.delete_outline, color: Colors.red),
-                  tooltip: 'Delete Document',
-                  onPressed: () {
-                    _showDeleteConfirmation(doc[DatabaseHelper.columnId]);
+                  icon: const Icon(Icons.open_in_new, color: Colors.blue),
+                  tooltip: 'Open File',
+                  onPressed: () async {
+                    final result = await OpenFile.open(filePath);
+                    if (result.type != ResultType.done) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Error: ${result.message}')),
+                      );
+                    }
                   },
                 ),
-              ],
-            ),
-          ],
+              IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                tooltip: 'Delete Document',
+                onPressed: () {
+                  _showDeleteConfirmation(doc[DatabaseHelper.columnId]);
+                },
+              ),
+            ],
+          ),
         ),
       ),
     );
