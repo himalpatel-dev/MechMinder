@@ -356,9 +356,11 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                     horizontal: 8,
                     vertical: 8,
                   ),
+
                   clipBehavior:
                       Clip.antiAlias, // Clips the ExpansionTile's corners
                   decoration: BoxDecoration(
+                    color: Theme.of(context).highlightColor,
                     borderRadius: BorderRadius.circular(12),
                     // border: Border(
                     //   left: BorderSide(
@@ -521,57 +523,37 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
       icon = Icons.warning_amber_rounded;
     }
     return Card(
-      margin: const EdgeInsets.fromLTRB(8, 4, 8, 8),
+      margin: const EdgeInsets.fromLTRB(10, 6, 10, 10),
       elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 12.0),
-        child: Row(
-          children: [
-            Icon(
-              icon,
-              color: isOverdue ? Colors.red[700] : Colors.orange[700],
-              size: 30,
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          border: Border(
+            left: BorderSide(
+              color: isOverdue ? Colors.red : Colors.orange,
+              width: 4,
             ),
-            const SizedBox(width: 12),
-
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 16,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  if (isPaper)
-                    Text(
-                      'Expires: $dueDate', // Simpler text for papers
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Theme.of(context).textTheme.bodySmall?.color,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    )
-                  else
-                    Text(
-                      'Due: $dueDate   |   $dueOdo ${settings.unitType}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: Theme.of(context).textTheme.bodySmall?.color,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                ],
-              ),
-            ),
-            if (!isPaper) ...[
+          ),
+        ),
+        child: ListTile(
+          leading: Icon(
+            icon,
+            color: isOverdue ? Colors.red[700] : Colors.orange,
+          ),
+          title: Text(
+            title,
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          subtitle: Text(
+            'Date: $dueDate'
+            '${isPaper ? '' : '\nOdometer: $dueOdo ${settings.unitType}'}',
+          ),
+          isThreeLine: false,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               IconButton(
-                icon: Icon(Icons.snooze, color: Colors.blue[600]),
+                icon: const Icon(Icons.snooze, color: Colors.blue),
                 tooltip: 'Snooze Reminder',
                 onPressed: () {
                   _showSnoozeDialog(reminder, settings);
@@ -585,12 +567,7 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                 tooltip: 'Mark as Complete',
                 onPressed: () async {
                   int id = reminder[DatabaseHelper.columnId];
-
-                  // --- THIS IS THE FIX ---
-                  // Instead of deleting, we update the status
-                  await dbHelper.updateReminderStatus(id, 'completed');
-                  // --- END OF FIX ---
-
+                  await dbHelper.deleteReminder(id);
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       const SnackBar(
@@ -603,7 +580,7 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                 },
               ),
             ],
-          ],
+          ),
         ),
       ),
     );

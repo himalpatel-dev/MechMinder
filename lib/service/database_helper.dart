@@ -26,10 +26,14 @@ class DatabaseHelper {
   static const columnUserId = 'user_id';
   static const columnMake = 'make';
   static const columnModel = 'model';
-  static const columnYear = 'year';
   static const columnRegNo = 'reg_no';
   static const columnInitialOdometer = 'initial_odometer';
   static const columnCurrentOdometer = 'current_odometer';
+  static const columnVariant = 'variant'; // <-- NEW
+  static const columnPurchaseDate = 'purchase_date'; // <-- RENAMED
+  static const columnFuelType = 'fuel_type'; // <-- NEW
+  static const columnVehicleColor = 'vehicle_color'; // <-- NEW
+  static const columnOwnerName = 'owner_name'; // <-- NEW
 
   // --- services Table Columns (NEW COLUMN ADDED) ---
   static const columnVehicleId = 'vehicle_id';
@@ -111,18 +115,20 @@ class DatabaseHelper {
   Future _onCreate(Database db, int version) async {
     // vehicles table is unchanged (already has current_odometer)
     await db.execute('''
-      CREATE TABLE $tableVehicles (
-        $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
-        $columnUserId TEXT,
-        $columnMake TEXT NOT NULL,
-        $columnModel TEXT NOT NULL,
-        $columnYear INTEGER,
-        $columnRegNo TEXT,
-        $columnInitialOdometer INTEGER,
-        $columnCurrentOdometer INTEGER, 
-        $columnCreatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
-      )
-    ''');
+        CREATE TABLE $tableVehicles (
+          $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
+          $columnMake TEXT NOT NULL,
+          $columnModel TEXT NOT NULL,
+          $columnVariant TEXT,               
+          $columnPurchaseDate TEXT,       
+          $columnFuelType TEXT NOT NULL,   
+          $columnVehicleColor TEXT,        
+          $columnRegNo TEXT,
+          $columnOwnerName TEXT NOT NULL,  
+          $columnInitialOdometer INTEGER,
+          $columnCurrentOdometer INTEGER
+        )
+      ''');
 
     // vendors table is unchanged
     await db.execute('''
