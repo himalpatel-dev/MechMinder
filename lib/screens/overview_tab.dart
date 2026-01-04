@@ -293,7 +293,7 @@ class OverviewTabState extends State<OverviewTab> {
     }
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(16.0).copyWith(top: 0),
+      padding: const EdgeInsets.all(16.0).copyWith(top: 0, bottom: 60),
       child: Column(
         children: [
           _buildPhotoGalleryCard(settings),

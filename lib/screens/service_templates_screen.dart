@@ -170,7 +170,7 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
               child: Text('No Auto Parts found. Tap "+" to add one.'),
             )
           : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 60),
               itemCount: _templates.length,
               itemBuilder: (context, index) {
                 final template = _templates[index];

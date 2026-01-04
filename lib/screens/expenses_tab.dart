@@ -378,7 +378,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.only(bottom: 80),
+                          padding: const EdgeInsets.only(bottom: 60),
                           itemCount: sortedGroups.length,
                           itemBuilder: (context, index) {
                             final groupName = sortedGroups[index];

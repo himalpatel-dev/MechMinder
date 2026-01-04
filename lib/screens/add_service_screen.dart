@@ -528,7 +528,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
           : Form(
               key: _formKey,
               child: ListView(
-                padding: const EdgeInsets.all(16.0),
+                padding: const EdgeInsets.all(16.0).copyWith(bottom: 60),
                 children: [
                   // --- CARD 1: SERVICE DETAILS ---
                   _buildSectionCard(

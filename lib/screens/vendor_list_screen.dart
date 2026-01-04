@@ -164,7 +164,7 @@ class _VendorListScreenState extends State<VendorListScreen> {
               child: Text('No Workshops added yet. Tap "+" to add one.'),
             )
           : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 60),
               itemCount: _vendors.length,
               itemBuilder: (context, index) {
                 final vendor = _vendors[index];

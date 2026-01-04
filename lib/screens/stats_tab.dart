@@ -123,7 +123,7 @@ class _StatsTabState extends State<StatsTab> {
         // --- NEW: Attach the scroll controller ---
         controller: _scrollController,
         // --- END NEW ---
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16.0).copyWith(bottom: 10),
         child: Column(
           children: [
             // (Total Spending Card is unchanged)

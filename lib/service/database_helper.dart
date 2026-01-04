@@ -316,13 +316,10 @@ class DatabaseHelper {
 
   Future<List<Map<String, dynamic>>> queryAllVehiclesWithNextReminder() async {
     Database db = await instance.database;
-    final String today = DateTime.now().toIso8601String().split('T')[0];
+    // We don't strictly filter by date >= today in the query because
+    // "Overdue" items (date < today) are actually the 'next' most important thing to show.
+    // Sorting by date ASC will put older dates (overdue) first.
 
-    // This query is now more complex. It finds:
-    // 1. The vehicle (v)
-    // 2. The *first* photo for that vehicle (p)
-    // 3. The *next* reminder for that vehicle (r)
-    // 4. The *name* of that reminder's template (t)
     final String sql =
         '''
     SELECT 
@@ -337,14 +334,19 @@ class DatabaseHelper {
         LIMIT 1
       ) AS photo_uri
     FROM $tableVehicles v
-    LEFT JOIN $tableReminders r ON r.$columnVehicleId = v.$columnId
-      AND (r.$columnDueDate >= ? OR r.$columnDueOdometer IS NOT NULL)
+    LEFT JOIN $tableReminders r ON r.$columnId = (
+        SELECT r2.$columnId
+        FROM $tableReminders r2
+        WHERE r2.$columnVehicleId = v.$columnId 
+          AND r2.$columnStatus = 'pending'
+        ORDER BY r2.$columnDueDate ASC, r2.$columnDueOdometer ASC
+        LIMIT 1
+    )
     LEFT JOIN $tableServiceTemplates t ON r.$columnTemplateId = t.$columnId
-    GROUP BY v.$columnId
-    ORDER BY r.$columnDueDate ASC, r.$columnDueOdometer ASC
+    ORDER BY v.$columnId DESC
   ''';
 
-    return await db.rawQuery(sql, [today]);
+    return await db.rawQuery(sql);
   }
 
   Future<Map<String, dynamic>?> queryVehicleById(int id) async {
@@ -712,13 +714,20 @@ class DatabaseHelper {
     );
   }
 
-  Future<void> restoreBackup(Map<String, dynamic> data) async {
+  Future<void> restoreBackup(
+    Map<String, dynamic> data, {
+    String? fileSourcePath,
+  }) async {
     Database db = await instance.database;
+    Directory appDocDir =
+        await getApplicationDocumentsDirectory(); // For saving files
 
     // We must use a "transaction" so if *any* part fails,
     // the whole thing is rolled back.
     await db.transaction((txn) async {
       // --- 1. WIPE ALL CURRENT DATA (in correct order) ---
+      await txn.delete(tableDocuments); // Wipe last
+      await txn.delete(tableVehiclePapers); // Wipe last
       await txn.delete(tablePhotos);
       await txn.delete(tableServiceItems);
       await txn.delete(tableExpenses);
@@ -799,6 +808,64 @@ class DatabaseHelper {
         await txn.insert(tableExpenses, row as Map<String, dynamic>);
       }
 
+      // Vehicle Papers
+      if (data.containsKey('vehicle_papers')) {
+        for (var row in (data['vehicle_papers'] as List)) {
+          int oldId = row[columnId];
+          row.remove(columnId);
+          row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
+
+          // Handle File
+          if (fileSourcePath != null &&
+              row[columnFilePath] != null &&
+              row[columnFilePath].isNotEmpty) {
+            String oldPath = row[columnFilePath];
+            String ext = extension(oldPath);
+            String fileNameInZip = 'papers/paper_$oldId$ext';
+            File sourceFile = File(join(fileSourcePath, fileNameInZip));
+            if (await sourceFile.exists()) {
+              String newFileName =
+                  'paper_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext';
+              String newPath = join(appDocDir.path, newFileName);
+              await sourceFile.copy(newPath);
+              row[columnFilePath] = newPath;
+            }
+          }
+
+          await txn.insert(tableVehiclePapers, row as Map<String, dynamic>);
+        }
+      }
+
+      // Documents
+      if (data.containsKey('documents')) {
+        for (var row in (data['documents'] as List)) {
+          int oldId = row[columnId];
+          row.remove(columnId);
+          if (row[columnVehicleId] != null) {
+            row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
+          }
+
+          // Handle File
+          if (fileSourcePath != null &&
+              row[columnFilePath] != null &&
+              row[columnFilePath].isNotEmpty) {
+            String oldPath = row[columnFilePath];
+            String ext = extension(oldPath);
+            String fileNameInZip = 'documents/doc_$oldId$ext';
+            File sourceFile = File(join(fileSourcePath, fileNameInZip));
+            if (await sourceFile.exists()) {
+              String newFileName =
+                  'doc_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext';
+              String newPath = join(appDocDir.path, newFileName);
+              await sourceFile.copy(newPath);
+              row[columnFilePath] = newPath;
+            }
+          }
+
+          await txn.insert(tableDocuments, row as Map<String, dynamic>);
+        }
+      }
+
       // Reminders
       for (var row in (data['reminders'] as List)) {
         row.remove(columnId);
@@ -810,6 +877,7 @@ class DatabaseHelper {
 
       // Photos
       for (var row in (data['photos'] as List)) {
+        int oldId = row[columnId]; // Save old ID for file lookup
         row.remove(columnId);
         // Update foreign keys (this is complex)
         if (row[columnParentType] == 'vehicle') {
@@ -817,6 +885,24 @@ class DatabaseHelper {
         } else if (row[columnParentType] == 'service') {
           row[columnParentId] = serviceIdMap[row[columnParentId]];
         }
+
+        // Handle File
+        if (fileSourcePath != null &&
+            row[columnUri] != null &&
+            row[columnUri].isNotEmpty) {
+          String oldPath = row[columnUri];
+          String ext = extension(oldPath);
+          String fileNameInZip = 'photos/photo_$oldId$ext';
+          File sourceFile = File(join(fileSourcePath, fileNameInZip));
+          if (await sourceFile.exists()) {
+            String newFileName =
+                'photo_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext';
+            String newPath = join(appDocDir.path, newFileName);
+            await sourceFile.copy(newPath);
+            row[columnUri] = newPath;
+          }
+        }
+
         await txn.insert(tablePhotos, row as Map<String, dynamic>);
       }
     });

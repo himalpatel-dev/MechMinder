@@ -16,7 +16,7 @@ class MasterScreen extends StatelessWidget {
       // We set a background color that matches the theme
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       body: GridView.count(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.fromLTRB(16.0, 16.0, 16.0, 60.0),
         // Create 2 columns
         crossAxisCount: 2,
         crossAxisSpacing: 16.0,

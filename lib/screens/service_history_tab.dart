@@ -117,7 +117,7 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
             )
           : ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 60),
               itemCount: sortedMonths.length,
               itemBuilder: (context, index) {
                 final monthYear = sortedMonths[index];

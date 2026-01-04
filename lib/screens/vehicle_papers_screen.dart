@@ -383,7 +383,7 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(8.0).copyWith(bottom: 80),
+              padding: const EdgeInsets.all(8.0).copyWith(bottom: 60),
               itemCount: _papers.length,
               itemBuilder: (context, index) {
                 final paper = _papers[index];

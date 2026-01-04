@@ -360,7 +360,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(8.0).copyWith(bottom: 80),
+              padding: const EdgeInsets.all(8.0).copyWith(bottom: 60),
               itemCount: _groupTitles.length,
               itemBuilder: (context, index) {
                 final groupName = _groupTitles[index];

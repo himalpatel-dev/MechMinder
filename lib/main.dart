@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart'; // <-- NEW: For SystemChrome
 import 'package:mechminder/widgets/splash_screen.dart'; // <-- NEW: Start on Splash Screen
 import 'package:provider/provider.dart';
 import 'service/settings_provider.dart';
@@ -11,6 +12,18 @@ import 'service/settings_provider.dart';
 Future<void> main() async {
   // 1. Ensure all Flutter bindings are ready
   WidgetsFlutterBinding.ensureInitialized();
+
+  // --- NEW: Make System Bars Transparent (Edge-to-Edge) ---
+  // SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+  // SystemChrome.setSystemUIOverlayStyle(
+  //   const SystemUiOverlayStyle(
+  //     statusBarColor: Colors.transparent,
+  //     systemNavigationBarColor: Colors.transparent,
+  //     systemNavigationBarDividerColor: Colors.transparent, // No divider
+  //     systemNavigationBarContrastEnforced: false, // No scrim
+  //   ),
+  // );
+  // --- END NEW ---
 
   // 2. Run the app directly (Heavy init moved to SplashScreen)
   runApp(

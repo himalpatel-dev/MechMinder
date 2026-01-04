@@ -196,7 +196,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
         title: Text(_isEditMode ? 'Edit Vehicle' : 'Add New Vehicle'),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16.0).copyWith(bottom: 60),
         child: Form(
           key: _formKey,
           child: Column(

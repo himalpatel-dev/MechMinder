@@ -265,6 +265,7 @@ class _UpcomingRemindersTabState extends State<UpcomingRemindersTab> {
               ),
             )
           : ListView(
+              padding: const EdgeInsets.only(bottom: 60),
               children: [
                 // --- OVERDUE SECTION ---
                 if (_overdueReminders.isNotEmpty) ...[

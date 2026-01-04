@@ -79,7 +79,7 @@ class VehicleListScreenState extends State<VehicleListScreen> {
         : AnimationLimiter(
             child: ListView.builder(
               // (Your animated list is unchanged)
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.fromLTRB(8.0, 8.0, 8.0, 140.0),
               itemCount: _vehicles.length,
               itemBuilder: (context, index) {
                 final vehicle = _vehicles[index];

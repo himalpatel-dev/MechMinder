@@ -110,35 +110,44 @@ class _HomeScreenState extends State<HomeScreen>
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
         decoration: BoxDecoration(
-          // --- CIRCLE BACKGROUND EFFECT (Like the image) ---
-          color: isSelected
-              ? primaryColor.withOpacity(0.1)
-              : Colors.transparent,
-          borderRadius: BorderRadius.circular(12),
+          // White pill for selected, transparent for unselected
+          color: isSelected ? Colors.white : Colors.transparent,
+          borderRadius: BorderRadius.circular(30),
         ),
-        child: Column(
+        child: Row(
           mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // 1. Icon (Animated)
+            // 1. Icon
             Icon(
               _navItems[index].icon,
               size: 24,
-              color: isSelected ? primaryColor : Colors.grey[600],
+              // Icon is Primary Color if selected (on White), White if unselected (on Primary Bar)
+              color: isSelected ? primaryColor : Colors.white,
             ),
-            const SizedBox(height: 4),
-            // 2. Text (Animated)
-            AnimatedDefaultTextStyle(
+            // 2. Text (Revealed when selected)
+            AnimatedSize(
               duration: const Duration(milliseconds: 300),
               curve: Curves.easeInOut,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                color: isSelected ? primaryColor : Colors.grey[600],
+              child: SizedBox(
+                width: isSelected ? null : 0,
+                child: isSelected
+                    ? Padding(
+                        padding: const EdgeInsets.only(left: 8),
+                        child: Text(
+                          _navItems[index].title,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.bold,
+                            color: primaryColor, // Text matches Icon color
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.visible,
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
-              child: Text(_navItems[index].title),
             ),
           ],
         ),
@@ -151,10 +160,6 @@ class _HomeScreenState extends State<HomeScreen>
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
 
-    // Determine background color for the bottom bar
-    final bool isDark = Theme.of(context).brightness == Brightness.dark;
-    final Color barColor = isDark ? Theme.of(context).cardColor : Colors.white;
-
     // Determine which icon to show (unchanged)
     IconData themeIcon;
     if (settings.themeMode == ThemeMode.dark) {
@@ -166,6 +171,7 @@ class _HomeScreenState extends State<HomeScreen>
     return DefaultTabController(
       length: _navItems.length,
       child: Scaffold(
+        extendBody: true, // Allows body to go behind the floating bar
         appBar: AppBar(
           title: const Text('MechMinder'),
           actions: [
@@ -202,21 +208,27 @@ class _HomeScreenState extends State<HomeScreen>
         floatingActionButton: _buildFloatingActionButton(),
 
         // --- THIS IS THE FINAL, ANIMATED BOTTOM NAVIGATION ---
-        bottomNavigationBar: Material(
-          color: barColor,
-          elevation: 10, // Higher elevation for better separation
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: _navItems.asMap().entries.map((entry) {
-                return Expanded(
-                  child: _buildBottomBarItem(context, entry.key, settings),
-                );
-              }).toList(),
+        bottomNavigationBar: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(10.0),
+            child: Material(
+              color: settings.primaryColor, // The Blue Background
+              elevation: 8,
+              borderRadius: BorderRadius.circular(30),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                height: 70,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: _navItems.asMap().entries.map((entry) {
+                    return _buildBottomBarItem(context, entry.key, settings);
+                  }).toList(),
+                ),
+              ),
             ),
           ),
         ),
+        // --- END OF FINAL BOTTOM NAVIGATION ---
         // --- END OF FINAL BOTTOM NAVIGATION ---
       ),
     );

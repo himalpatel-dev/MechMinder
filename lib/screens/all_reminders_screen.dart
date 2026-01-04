@@ -311,7 +311,7 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(8.0).copyWith(bottom: 80),
+              padding: const EdgeInsets.all(8.0).copyWith(bottom: 60),
               itemCount: sortedVehicleNames.length,
               itemBuilder: (context, index) {
                 final vehicleName = sortedVehicleNames[index];
