@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
+import '../widgets/full_screen_photo_viewer.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart'; // Make sure this path is correct
 
@@ -500,6 +501,9 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = settings.primaryColor;
+
     final usedTemplateIds = _serviceItems
         .where((item) => item.templateId != null)
         .map((item) => item.templateId)
@@ -511,145 +515,192 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         )
         .toList();
 
-    // Define a standard border and fill color for all fields
-    final bool isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    final Color? fillColor = isDarkMode ? Colors.grey[800] : Colors.grey[100];
-    final InputBorder fieldBorder = OutlineInputBorder(
-      borderRadius: BorderRadius.circular(8),
-      borderSide: BorderSide(color: Colors.grey[400]!),
-    );
+    // --- MODERN INPUT DECORATION HELPER ---
+    InputDecoration modernInputDecoration(
+      String label,
+      IconData icon, {
+      String? suffixText,
+    }) {
+      return InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: primaryColor),
+        suffixText: suffixText,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: primaryColor, width: 2),
+        ),
+        filled: true,
+        fillColor: isDark ? Colors.grey.shade900 : Colors.grey.shade50,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 16,
+        ),
+      );
+    }
+
+    if (_isLoading) {
+      return Scaffold(
+        appBar: AppBar(title: const Text('Loading...')),
+        body: const Center(child: CircularProgressIndicator()),
+      );
+    }
 
     return Scaffold(
+      backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
-        title: Text(_isEditMode ? 'Edit Service' : 'Add Service Record'),
+        title: Text(
+          _isEditMode ? 'Edit Service' : 'Add Service Record',
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        elevation: 0,
+        backgroundColor: Colors.transparent,
+        foregroundColor: isDark ? Colors.white : Colors.black,
+        centerTitle: true,
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Form(
-              key: _formKey,
-              child: ListView(
-                padding: const EdgeInsets.all(16.0).copyWith(bottom: 60),
-                children: [
-                  // --- CARD 1: SERVICE DETAILS ---
-                  _buildSectionCard(
-                    title: 'Service Details',
-                    children: [
-                      TextFormField(
-                        controller: _serviceNameController,
-                        decoration: InputDecoration(
-                          labelText: 'Service Name (e.g., General Service)',
-                          icon: Icon(Icons.label, color: settings.primaryColor),
-                        ),
-                        validator: (value) => (value == null || value.isEmpty)
-                            ? 'Please enter a service name'
-                            : null,
+      body: Column(
+        children: [
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildSectionHeader("Service Details", isDark),
+                    const SizedBox(height: 16),
+
+                    // --- SERVICE NAME ---
+                    TextFormField(
+                      controller: _serviceNameController,
+                      decoration: modernInputDecoration(
+                        "Service Name",
+                        Icons.build,
                       ),
-                      const SizedBox(height: 10),
-                      GestureDetector(
-                        onTap: _pickDate,
-                        child: AbsorbPointer(
-                          child: TextFormField(
-                            controller: _dateController,
-                            decoration: InputDecoration(
-                              labelText: 'Service Date',
-                              icon: Icon(
-                                Icons.calendar_today,
-                                color: settings.primaryColor,
+                      validator: (value) =>
+                          (value == null || value.isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+
+                    // --- DATE & ODOMETER ---
+                    Row(
+                      children: [
+                        Expanded(
+                          child: GestureDetector(
+                            onTap: _pickDate,
+                            child: AbsorbPointer(
+                              child: TextFormField(
+                                controller: _dateController,
+                                decoration: modernInputDecoration(
+                                  "Date",
+                                  Icons.calendar_today,
+                                ),
+                                validator: (value) =>
+                                    (value == null || value.isEmpty)
+                                    ? 'Required'
+                                    : null,
                               ),
                             ),
-                            enabled: true,
-                            // style: const TextStyle(color: Colors.black),
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                        Expanded(
+                          child: TextFormField(
+                            controller: _odometerController,
+                            decoration: modernInputDecoration(
+                              "Odometer",
+                              Icons.speed,
+                              suffixText: settings.unitType,
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
                             validator: (value) =>
                                 (value == null || value.isEmpty)
-                                ? 'Please enter a date'
+                                ? 'Required'
                                 : null,
                           ),
                         ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextFormField(
-                        controller: _odometerController,
-                        decoration: InputDecoration(
-                          labelText: 'Odometer',
-                          icon: Icon(Icons.speed, color: settings.primaryColor),
-                          suffixText: settings.unitType,
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
-                        validator: (value) => (value == null || value.isEmpty)
-                            ? 'Please enter the odometer'
-                            : null,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
+                      ],
+                    ),
 
-                  // --- CARD 2: PARTS & COST ---
-                  _buildSectionCard(
-                    title: 'Parts & Cost',
-                    children: [
-                      _isLoadingTemplates
-                          ? const Center(child: CircularProgressIndicator())
-                          : Row(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  child: DropdownButtonFormField<int>(
-                                    value: _selectedTemplateId,
-                                    hint: const Text('Add from Auto Parts'),
-                                    decoration: InputDecoration(
-                                      border: fieldBorder,
-                                      filled: true,
-                                      fillColor: fillColor,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 12.0,
-                                            vertical: 15.0,
-                                          ),
-                                    ),
-                                    items: availableTemplates.map((template) {
-                                      return DropdownMenuItem<int>(
-                                        value:
-                                            template[DatabaseHelper.columnId],
-                                        child: Text(
-                                          template[DatabaseHelper.columnName],
-                                        ),
-                                      );
-                                    }).toList(),
-                                    onChanged: (int? newId) {
-                                      setState(() {
-                                        _selectedTemplateId = newId;
-                                      });
-                                    },
+                    const SizedBox(height: 32),
+                    _buildSectionHeader("Parts & Cost", isDark),
+                    const SizedBox(height: 16),
+
+                    // --- PARTS SELECTION ---
+                    _isLoadingTemplates
+                        ? const Center(child: CircularProgressIndicator())
+                        : Row(
+                            children: [
+                              Expanded(
+                                child: DropdownButtonFormField<int>(
+                                  value: _selectedTemplateId,
+                                  decoration: modernInputDecoration(
+                                    "Add from Auto Parts",
+                                    Icons.build_circle,
                                   ),
+                                  items: availableTemplates.map((template) {
+                                    return DropdownMenuItem<int>(
+                                      value: template[DatabaseHelper.columnId],
+                                      child: Text(
+                                        template[DatabaseHelper.columnName],
+                                      ),
+                                    );
+                                  }).toList(),
+                                  onChanged: (int? newId) {
+                                    setState(() {
+                                      _selectedTemplateId = newId;
+                                    });
+                                  },
                                 ),
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.add_circle,
-                                    color: Colors.green,
-                                    size: 30,
-                                  ),
-                                  tooltip: 'Add selected AutoParts item',
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: primaryColor.withOpacity(0.1),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: IconButton(
+                                  icon: Icon(Icons.add, color: primaryColor),
                                   onPressed: _addPartFromTemplate,
                                 ),
-                              ],
-                            ),
-                      const SizedBox(height: 10),
-                      Column(
-                        children: [
-                          for (int i = 0; i < _serviceItems.length; i++)
-                            _buildServiceItemRow(_serviceItems[i], i, settings),
-                        ],
-                      ),
-                      TextButton.icon(
-                        icon: Icon(Icons.add, color: settings.primaryColor),
+                              ),
+                            ],
+                          ),
+                    const SizedBox(height: 16),
+
+                    // --- SERVICE ITEMS LIST ---
+                    ..._serviceItems.asMap().entries.map((entry) {
+                      return _buildServiceItemRow(
+                        entry.value,
+                        entry.key,
+                        isDark,
+                        primaryColor,
+                        settings.currencySymbol,
+                      );
+                    }),
+
+                    const SizedBox(height: 16),
+                    // Add Manual Item Button
+                    Center(
+                      child: TextButton.icon(
+                        icon: Icon(Icons.add, color: primaryColor),
                         label: Text(
                           'Add Manual Item',
                           style: TextStyle(
                             fontSize: 16,
-                            color: settings.primaryColor,
+                            color: primaryColor,
+                            fontWeight: FontWeight.bold,
                           ),
                         ),
                         onPressed: () {
@@ -658,270 +709,167 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                           });
                         },
                       ),
-                      const Divider(height: 20),
-                      TextFormField(
-                        controller: _totalCostController,
-                        decoration: InputDecoration(
-                          labelText: 'Total Cost (Auto-calculated)',
-                          prefixIcon: Padding(
-                            padding: const EdgeInsets.only(
-                              top: 12,
-                              left: 12,
-                              right: 12,
-                            ),
-                            child: Text(
-                              settings
-                                  .currencySymbol, // This is your dynamic symbol
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                                color: settings
-                                    .primaryColor, // Uses your theme color
+                    ),
+
+                    const SizedBox(height: 16),
+                    // --- TOTAL COST ---
+                    TextFormField(
+                      controller: _totalCostController,
+                      decoration:
+                          modernInputDecoration(
+                            "Total Cost",
+                            Icons.attach_money, // Or generic money icon
+                          ).copyWith(
+                            prefixIcon: Padding(
+                              padding: const EdgeInsets.all(12),
+                              child: Text(
+                                settings.currencySymbol,
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: primaryColor,
+                                ),
                               ),
                             ),
                           ),
-                        ),
-                        readOnly: true,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
+                      readOnly: true,
+                    ),
 
-                  // --- CARD 3: VENDOR & NOTES ---
-                  _buildSectionCard(
-                    title: 'Workshop & Notes',
-                    children: [
-                      _isLoadingVendors
-                          ? const Center(child: CircularProgressIndicator())
-                          : DropdownButtonFormField<int>(
-                              value: _selectedVendorId,
-                              hint: const Text('Select Workshop'),
-                              decoration: InputDecoration(
-                                // <-- Use new style
-                                labelText: 'Workshop',
-                                prefixIcon: Icon(
-                                  Icons.store,
-                                  color: settings.primaryColor,
-                                ),
-                                border: fieldBorder,
-                                filled: true,
-                                fillColor: fillColor,
-                              ),
-                              items: _allVendors
-                                  .map(
-                                    (vendor) => DropdownMenuItem<int>(
-                                      value: vendor[DatabaseHelper.columnId],
-                                      child: Text(
-                                        vendor[DatabaseHelper.columnName],
-                                      ),
-                                    ),
-                                  )
-                                  .toList(),
-                              onChanged: (int? newValue) {
-                                setState(() {
-                                  _selectedVendorId = newValue;
-                                });
-                              },
+                    const SizedBox(height: 32),
+                    _buildSectionHeader("Workshop & Notes", isDark),
+                    const SizedBox(height: 16),
+
+                    // --- VENDOR ---
+                    _isLoadingVendors
+                        ? const Center(child: CircularProgressIndicator())
+                        : DropdownButtonFormField<int>(
+                            value: _selectedVendorId,
+                            decoration: modernInputDecoration(
+                              "Workshop / Garage",
+                              Icons.store,
                             ),
-                      const SizedBox(height: 10),
-                      TextFormField(
-                        controller: _notesController,
-                        decoration: InputDecoration(
-                          labelText: 'Notes (Optional)',
-                          icon: Icon(Icons.notes, color: settings.primaryColor),
-                        ),
-                        maxLines: 3,
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // --- CARD 4: PHOTOS ---
-                  _buildSectionCard(
-                    title: 'Photos (Receipts, Parts, etc.)',
-                    children: [
-                      SizedBox(
-                        height: 100,
-                        child: ListView.builder(
-                          scrollDirection: Axis.horizontal,
-                          itemCount:
-                              _existingPhotos.length +
-                              _newImageFiles.length +
-                              1,
-                          itemBuilder: (context, index) {
-                            // (All photo logic is unchanged)
-                            if (index ==
-                                _existingPhotos.length +
-                                    _newImageFiles.length) {
-                              return GestureDetector(
-                                onTap: _pickImage,
-                                child: Container(
-                                  width: 100,
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.grey),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: const Icon(
-                                    Icons.add_a_photo,
-                                    size: 40,
-                                    color: Colors.grey,
-                                  ),
-                                ),
+                            items: _allVendors.map((vendor) {
+                              return DropdownMenuItem<int>(
+                                value: vendor[DatabaseHelper.columnId],
+                                child: Text(vendor[DatabaseHelper.columnName]),
                               );
-                            }
-                            if (index < _existingPhotos.length) {
-                              final photo = _existingPhotos[index];
-                              return Stack(
-                                children: [
-                                  Container(
-                                    width: 100,
-                                    height: 100,
-                                    margin: const EdgeInsets.only(right: 8),
-                                    decoration: BoxDecoration(
-                                      borderRadius: BorderRadius.circular(8),
-                                      image: DecorationImage(
-                                        image: FileImage(
-                                          File(photo[DatabaseHelper.columnUri]),
-                                        ),
-                                        fit: BoxFit.cover,
-                                      ),
-                                    ),
-                                  ),
-                                  Positioned(
-                                    top: 0,
-                                    right: 8,
-                                    child: GestureDetector(
-                                      onTap: () async {
-                                        await dbHelper.deletePhoto(
-                                          photo[DatabaseHelper.columnId],
-                                        );
-                                        setState(() {
-                                          _existingPhotos.removeAt(index);
-                                        });
-                                      },
-                                      child: Container(
-                                        decoration: const BoxDecoration(
-                                          color: Colors.black54,
-                                          shape: BoxShape.circle,
-                                        ),
-                                        child: const Icon(
-                                          Icons.delete,
-                                          color: Colors.white,
-                                          size: 20,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }
-                            final newPhotoIndex =
-                                index - _existingPhotos.length;
-                            final photoFile = _newImageFiles[newPhotoIndex];
-                            return Stack(
-                              children: [
-                                Container(
-                                  width: 100,
-                                  height: 100,
-                                  margin: const EdgeInsets.only(right: 8),
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(8),
-                                    image: DecorationImage(
-                                      image: FileImage(File(photoFile.path)),
-                                      fit: BoxFit.cover,
-                                    ),
-                                  ),
-                                ),
-                                Positioned(
-                                  top: 0,
-                                  right: 8,
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _newImageFiles.removeAt(newPhotoIndex);
-                                      });
-                                    },
-                                    child: Container(
-                                      decoration: const BoxDecoration(
-                                        color: Colors.black54,
-                                        shape: BoxShape.circle,
-                                      ),
-                                      child: const Icon(
-                                        Icons.close,
-                                        color: Colors.white,
-                                        size: 20,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
+                            }).toList(),
+                            onChanged: (int? newValue) {
+                              setState(() => _selectedVendorId = newValue);
+                            },
+                          ),
+                    const SizedBox(height: 16),
 
-                  // --- SAVE BUTTON ---
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      textStyle: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
+                    // --- NOTES ---
+                    TextFormField(
+                      controller: _notesController,
+                      decoration: modernInputDecoration(
+                        "Notes (Optional)",
+                        Icons.notes,
                       ),
+                      maxLines: 3,
                     ),
-                    onPressed: _saveService,
-                    child: Text(
-                      _isEditMode ? 'Update Service' : 'Save Service',
-                    ),
-                  ),
-                ],
+
+                    const SizedBox(height: 32),
+                    _buildSectionHeader("Upload Bill", isDark),
+                    const SizedBox(height: 16),
+                    _buildPhotoPicker(isDark, primaryColor),
+                  ],
+                ),
               ),
             ),
-    );
-  }
+          ),
 
-  // --- NEW: Helper widget to build the Card sections ---
-  Widget _buildSectionCard({
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Card(
-      elevation: 2,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(title, style: Theme.of(context).textTheme.titleLarge),
-            const Divider(height: 20, thickness: 1),
-            ...children,
-          ],
-        ),
+          // --- STICKY BOTTOM BUTTON ---
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: SizedBox(
+                width: double.infinity,
+                height: 56,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    elevation: 4,
+                  ),
+                  onPressed: _saveService,
+                  child: Text(
+                    _isEditMode ? 'UPDATE SERVICE' : 'SAVE SERVICE',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  // --- (UPDATED SERVICE ITEM ROW) ---
+  Widget _buildSectionHeader(String title, bool isDark) {
+    return Row(
+      children: [
+        Container(
+          width: 4,
+          height: 24,
+          decoration: BoxDecoration(
+            color: Theme.of(context).primaryColor,
+            borderRadius: BorderRadius.circular(2),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Text(
+          title.toUpperCase(),
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.grey.shade300 : Colors.grey.shade800,
+            letterSpacing: 1.2,
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildServiceItemRow(
     ServiceItem item,
     int index,
-    SettingsProvider settings,
+    bool isDark,
+    Color primaryColor,
+    String currencySymbol,
   ) {
+    // Mini-decoration helper for these smaller fields
+    InputDecoration itemDecoration(String label) {
+      return InputDecoration(
+        labelText: label,
+        isDense: true,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(8),
+          borderSide: BorderSide(color: Colors.grey.shade400),
+        ),
+        filled: true,
+        fillColor: isDark ? Colors.grey.shade900 : Colors.grey.shade50,
+      );
+    }
+
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             flex: 3,
             child: TextFormField(
               controller: item.nameController,
-              decoration: const InputDecoration(labelText: 'Part Name'),
+              decoration: itemDecoration("Part/Service"),
+              validator: (val) => val == null || val.isEmpty ? 'Req' : null,
             ),
           ),
           const SizedBox(width: 8),
@@ -929,26 +877,23 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             flex: 1,
             child: TextFormField(
               controller: item.qtyController,
-              decoration: const InputDecoration(labelText: 'Qty'),
+              decoration: itemDecoration("Qty"),
               keyboardType: TextInputType.number,
-              // --- FIX 1: Allow only whole numbers ---
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: (_) => _updateTotalCost(),
             ),
           ),
           const SizedBox(width: 8),
           Expanded(
-            flex: 1,
+            flex: 2, // Gave it a bit more space
             child: TextFormField(
               controller: item.costController,
-              decoration: InputDecoration(
-                labelText: 'Cost',
-                prefixText: settings.currencySymbol,
-              ),
+              decoration: itemDecoration(
+                "Cost",
+              ), // Removed prefix to save space, or could add partial
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
-              // --- FIX 3: Clear "0" on tap ---
               onTap: () {
                 if (item.costController.text == '0') {
                   item.costController.clear();
@@ -957,17 +902,20 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               onChanged: (_) => _updateTotalCost(),
             ),
           ),
+          const SizedBox(width: 8),
           IconButton(
-            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
             onPressed: () {
               setState(() {
                 if (_serviceItems.length > 1) {
-                  // --- Must dispose before removing ---
                   item.dispose();
                   _serviceItems.removeAt(index);
                 } else {
-                  _serviceItems[index].dispose();
-                  _serviceItems[index] = ServiceItem();
+                  // Clear the first item if it's the only one
+                  _serviceItems[index].nameController.clear();
+                  _serviceItems[index].qtyController.text = '1';
+                  _serviceItems[index].costController.text = '0';
+                  _serviceItems[index].templateId = null;
                 }
                 _updateTotalCost();
               });
@@ -978,21 +926,122 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     );
   }
 
-  // --- NEW: Add a dispose method ---
+  Widget _buildPhotoPicker(bool isDark, Color primaryColor) {
+    return SizedBox(
+      height: 80,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          // Add Button
+          GestureDetector(
+            onTap: _pickImage,
+            child: Container(
+              width: 80,
+              margin: const EdgeInsets.only(right: 12),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey.shade900 : Colors.grey.shade100,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.grey.shade400),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.add_a_photo_outlined,
+                  size: 28,
+                  color: primaryColor,
+                ),
+              ),
+            ),
+          ),
+          // Existing Photos
+          ..._existingPhotos.asMap().entries.map((entry) {
+            final index = entry.key;
+            final photo = entry.value;
+            return _buildPhotoItem(
+              File(photo[DatabaseHelper.columnUri]),
+              () {
+                final paths = _existingPhotos
+                    .map((p) => p[DatabaseHelper.columnUri] as String)
+                    .toList();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => FullScreenPhotoViewer(
+                      photoPaths: paths,
+                      initialIndex: index,
+                    ),
+                  ),
+                );
+              },
+              () async {
+                await dbHelper.deletePhoto(photo[DatabaseHelper.columnId]);
+                setState(() {
+                  _existingPhotos.removeAt(index);
+                });
+              },
+            );
+          }),
+          // New Photos
+          ..._newImageFiles.asMap().entries.map((entry) {
+            final index = entry.key;
+            final file = entry.value;
+            return _buildPhotoItem(File(file.path), null, () {
+              setState(() {
+                _newImageFiles.removeAt(index);
+              });
+            });
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPhotoItem(
+    File file,
+    VoidCallback? onTap,
+    VoidCallback onDelete,
+  ) {
+    return Stack(
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: 80,
+            margin: const EdgeInsets.only(right: 12),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(12),
+              image: DecorationImage(image: FileImage(file), fit: BoxFit.cover),
+            ),
+          ),
+        ),
+        Positioned(
+          top: 2,
+          right: 14,
+          child: GestureDetector(
+            onTap: onDelete,
+            child: Container(
+              padding: const EdgeInsets.all(4),
+              decoration: const BoxDecoration(
+                color: Colors.black54,
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.close, color: Colors.white, size: 14),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   void dispose() {
-    // Dispose all controllers in the main state
     _serviceNameController.dispose();
     _dateController.dispose();
     _odometerController.dispose();
     _totalCostController.dispose();
     _notesController.dispose();
-
-    // Loop and dispose all controllers in the items list
     for (var item in _serviceItems) {
       item.dispose();
     }
-
     super.dispose();
   }
 }

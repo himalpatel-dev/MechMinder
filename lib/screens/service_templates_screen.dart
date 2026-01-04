@@ -8,14 +8,13 @@ class ServiceTemplatesScreen extends StatefulWidget {
   const ServiceTemplatesScreen({super.key});
 
   @override
-  // --- Back to a private State class ---
   State<ServiceTemplatesScreen> createState() => _ServiceTemplatesScreenState();
 }
 
-// --- Back to a private State class ---
 class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
   final dbHelper = DatabaseHelper.instance;
   List<Map<String, dynamic>> _templates = [];
+  bool _isLoading = true;
 
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _daysController = TextEditingController();
@@ -27,15 +26,16 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     _refreshTemplateList();
   }
 
-  // --- Back to a private method ---
   Future<void> _refreshTemplateList() async {
+    setState(() => _isLoading = true);
     final allTemplates = await dbHelper.queryAllServiceTemplates();
     setState(() {
       _templates = allTemplates;
+      _isLoading = false;
     });
   }
 
-  // --- Back to a private method ---
+  // --- DIALOGS ---
   void _showAddEditTemplateDialog({Map<String, dynamic>? template}) {
     bool isEditing = template != null;
 
@@ -46,61 +46,111 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
       _kmController.text = (template[DatabaseHelper.columnIntervalKm] ?? '')
           .toString();
     } else {
-      _nameController.text = '';
-      _daysController.text = '';
-      _kmController.text = '';
+      _nameController.clear();
+      _daysController.clear();
+      _kmController.clear();
     }
 
     showDialog(
       context: context,
       builder: (context) {
+        final primaryColor = Provider.of<SettingsProvider>(
+          context,
+          listen: false,
+        ).primaryColor;
         return AlertDialog(
-          title: Text(isEditing ? 'Edit Auto Part' : 'Add New Auto Part'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _nameController,
-                decoration: const InputDecoration(labelText: 'Auto Part Name'),
-                autofocus: true,
-              ),
-              TextField(
-                controller: _daysController,
-                decoration: const InputDecoration(labelText: 'Interval (Days)'),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              ),
-              TextField(
-                controller: _kmController,
-                decoration: const InputDecoration(labelText: 'Interval (km)'),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              ),
-            ],
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
           ),
-          actions: [
-            if (isEditing)
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                  _showDeleteConfirmation(template[DatabaseHelper.columnId]);
-                },
-                child: const Text(
-                  'Delete',
-                  style: TextStyle(color: Colors.red),
+          title: Text(
+            isEditing ? 'Edit Auto Part' : 'Add New Auto Part',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTextField(
+                  _nameController,
+                  "Auto Part Name",
+                  Icons.build_circle_outlined,
+                  primaryColor,
+                  true,
                 ),
-              ),
-            const Spacer(),
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Cancel'),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildTextField(
+                        _daysController,
+                        "Days",
+                        Icons.calendar_today,
+                        primaryColor,
+                        false,
+                        TextInputType.number,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildTextField(
+                        _kmController,
+                        "Interval (km)",
+                        Icons.speed,
+                        primaryColor,
+                        false,
+                        TextInputType.number,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Set default intervals for this part.",
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                ),
+              ],
             ),
-            ElevatedButton(
-              onPressed: () {
-                _saveTemplate(template);
-                Navigator.of(context).pop();
-              },
-              child: const Text('Save'),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+          actions: [
+            Row(
+              children: [
+                if (isEditing)
+                  TextButton(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _showDeleteConfirmation(
+                        template[DatabaseHelper.columnId],
+                      );
+                    },
+                    style: TextButton.styleFrom(
+                      foregroundColor: Colors.redAccent,
+                    ),
+                    child: const Text('Delete'),
+                  ),
+                const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancel'),
+                ),
+                const SizedBox(width: 8),
+                ElevatedButton(
+                  onPressed: () {
+                    _saveTemplate(template);
+                    Navigator.of(context).pop();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+              ],
             ),
           ],
         );
@@ -108,14 +158,47 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     );
   }
 
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    IconData icon,
+    Color color,
+    bool autofocus, [
+    TextInputType? type,
+  ]) {
+    return TextField(
+      controller: controller,
+      autofocus: autofocus,
+      keyboardType: type,
+      inputFormatters: type == TextInputType.number
+          ? [FilteringTextInputFormatter.digitsOnly]
+          : [],
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: color, size: 20),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+        isDense: true,
+      ),
+    );
+  }
+
   void _saveTemplate(Map<String, dynamic>? template) async {
     bool isEditing = template != null;
 
     Map<String, dynamic> row = {
-      DatabaseHelper.columnName: _nameController.text,
+      DatabaseHelper.columnName: _nameController.text.trim(),
       DatabaseHelper.columnIntervalDays: int.tryParse(_daysController.text),
       DatabaseHelper.columnIntervalKm: int.tryParse(_kmController.text),
     };
+
+    if (row[DatabaseHelper.columnName] == null ||
+        row[DatabaseHelper.columnName].isEmpty) {
+      return;
+    }
 
     if (isEditing) {
       row[DatabaseHelper.columnId] = template[DatabaseHelper.columnId];
@@ -131,9 +214,10 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete Auto Part?'),
         content: const Text(
-          'Are you sure you want to permanently delete this Auto Part? This will not affect existing reminders.',
+          'Are you sure you want to permanently delete this Auto Part?',
         ),
         actions: [
           TextButton(
@@ -143,7 +227,10 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
-              foregroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () async {
               await dbHelper.deleteServiceTemplate(id);
@@ -157,204 +244,249 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     );
   }
 
+  // --- BUILD UI ---
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = settings.primaryColor;
 
-    // --- ADD Scaffold AND AppBar BACK ---
     return Scaffold(
-      appBar: AppBar(title: const Text('Manage Auto Parts')),
-      // --- END ADD ---
-      body: _templates.isEmpty
-          ? const Center(
-              child: Text('No Auto Parts found. Tap "+" to add one.'),
-            )
-          : ListView.builder(
-              padding: const EdgeInsets.only(bottom: 60),
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
+      appBar: AppBar(
+        title: Text(
+          'Manage Auto Parts',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.grey.shade900,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: IconThemeData(
+          color: isDark ? Colors.white : Colors.grey.shade900,
+        ),
+      ),
+      body: _isLoading
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
+          : _templates.isEmpty
+          ? _buildEmptyState(isDark)
+          : ListView.separated(
+              padding: const EdgeInsets.all(16),
               itemCount: _templates.length,
+              separatorBuilder: (ctx, i) => const SizedBox(height: 12),
               itemBuilder: (context, index) {
                 final template = _templates[index];
-
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 5,
-                  ),
-                  elevation: 2,
-                  child: ListTile(
-                    leading: Icon(
-                      _getIconForCategory(template[DatabaseHelper.columnName]),
-                      color: settings.primaryColor,
-                      size: 36,
-                    ),
-                    title: Text(
-                      template[DatabaseHelper.columnName],
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    subtitle: Text(
-                      'Interval: ${template[DatabaseHelper.columnIntervalDays] ?? 'N/A'} days / ${template[DatabaseHelper.columnIntervalKm] ?? 'N/A'} ${settings.unitType}',
-                    ),
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: Colors.grey[400],
-                    ),
-                    onTap: () {
-                      // --- Call private method ---
-                      _showAddEditTemplateDialog(template: template);
-                    },
-                  ),
+                return _buildTemplateCard(
+                  template,
+                  isDark,
+                  primaryColor,
+                  settings.unitType,
                 );
               },
             ),
-      // --- ADD FloatingActionButton BACK ---
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showAddEditTemplateDialog(template: null);
-        },
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showAddEditTemplateDialog(template: null),
+        backgroundColor: primaryColor,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          "Add Auto Part",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
       ),
-      // --- END ADD ---
+    );
+  }
+
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.build_circle_outlined,
+            size: 80,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            "No Auto Parts Found",
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white70 : Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Define standard parts and service intervals.",
+            style: TextStyle(color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTemplateCard(
+    Map<String, dynamic> template,
+    bool isDark,
+    Color primaryColor,
+    String unit,
+  ) {
+    final name = template[DatabaseHelper.columnName] ?? 'Unknown Part';
+    final days = template[DatabaseHelper.columnIntervalDays];
+    final km = template[DatabaseHelper.columnIntervalKm];
+
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+        border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () => _showAddEditTemplateDialog(template: template),
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                // Icon Avatar
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _getIconForCategory(name),
+                    color: primaryColor,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                // Content
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        name,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.grey.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          if (days != null && days > 0) ...[
+                            Icon(
+                              Icons.calendar_today,
+                              size: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              "$days Days",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          if (km != null && km > 0) ...[
+                            Icon(
+                              Icons.speed,
+                              size: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              "$km $unit",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
+                          if ((days == null || days == 0) &&
+                              (km == null || km == 0))
+                            Text(
+                              "No default interval",
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade400,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                // Action Icon
+                Icon(
+                  Icons.edit_outlined,
+                  color: Colors.grey.shade400,
+                  size: 20,
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 
   IconData _getIconForCategory(String? category) {
-    if (category == null) return Icons.monetization_on;
+    if (category == null) return Icons.build;
     String catLower = category.toLowerCase();
+
+    // Fuel & Engine
     if (catLower.contains('fuel') ||
-        catLower.contains('petrol') ||
-        catLower.contains('gas')) {
+        catLower.contains('gas') ||
+        catLower.contains('petrol'))
       return Icons.local_gas_station;
-    }
+    if (catLower.contains('oil') || catLower.contains('fluid'))
+      return Icons.oil_barrel;
+    if (catLower.contains('coolant')) return Icons.ac_unit;
+    if (catLower.contains('battery')) return Icons.battery_charging_full;
 
-    // 🛡 Insurance
-    if (catLower.contains('insurance') || catLower.contains('policy')) {
-      return Icons.shield;
-    }
-
-    // 🧼 Washing / Cleaning
-    if (catLower.contains('wash') ||
-        catLower.contains('clean') ||
-        catLower.contains('detailing')) {
-      return Icons.wash;
-    }
-
-    // 🅿 Parking
-    if (catLower.contains('parking') || catLower.contains('park')) {
-      return Icons.local_parking;
-    }
-
-    // 🛞 Tyres
+    // Externals
     if (catLower.contains('tire') ||
         catLower.contains('tyre') ||
-        catLower.contains('tyres')) {
+        catLower.contains('wheel'))
       return Icons.tire_repair;
-    }
-
-    // ⚙ Servicing / Maintenance
-    if (catLower.contains('service') ||
-        catLower.contains('maintenance') ||
-        catLower.contains('checkup') ||
-        catLower.contains('inspection')) {
-      return Icons.build;
-    }
-
-    // 🛢 Oil change
-    if (catLower.contains('oil') || catLower.contains('engine oil')) {
-      return Icons.oil_barrel;
-    }
-
-    // 🧯 Brake pads / brake oil
-    if (catLower.contains('brake') ||
-        catLower.contains('brakes') ||
-        catLower.contains('break')) {
-      return Icons.car_repair;
-    }
-
-    // 🔋 Battery
-    if (catLower.contains('battery') || catLower.contains('accumulator')) {
-      return Icons.battery_charging_full;
-    }
-
-    // 💨 Air filter / filter replacement
-    if (catLower.contains('filter')) {
-      return Icons.filter_alt;
-    }
-
-    // 💡 Lights / bulbs / indicators
     if (catLower.contains('light') ||
         catLower.contains('bulb') ||
-        catLower.contains('indicator')) {
+        catLower.contains('lamp'))
       return Icons.lightbulb;
-    }
+    if (catLower.contains('wash') || catLower.contains('clean'))
+      return Icons.wash;
 
-    // 🚙 Accessories / modification
-    if (catLower.contains('accessory') ||
-        catLower.contains('modification') ||
-        catLower.contains('sticker')) {
+    // Mechanical
+    if (catLower.contains('brake') ||
+        catLower.contains('pad') ||
+        catLower.contains('disk'))
       return Icons.car_repair;
-    }
-
-    // 🧰 Tools / spare parts
-    if (catLower.contains('spare') ||
-        catLower.contains('parts') ||
-        catLower.contains('tool')) {
-      return Icons.handyman;
-    }
-
-    // 🚗 General vehicle cost
-    if (catLower.contains('vehicle') ||
-        catLower.contains('car') ||
-        catLower.contains('bike')) {
-      return Icons.directions_car;
-    }
-
-    // 🧾 Tax / RTO / registration / license
-    if (catLower.contains('rto') ||
-        catLower.contains('tax') ||
-        catLower.contains('registration') ||
-        catLower.contains('license')) {
-      return Icons.receipt_long;
-    }
-
-    // 🧳 Trip / travel / toll / highway
-    if (catLower.contains('trip') ||
-        catLower.contains('toll') ||
-        catLower.contains('highway') ||
-        catLower.contains('travel')) {
-      return Icons.add_road;
-    }
-
-    // 🧯 Emergency / breakdown / towing
-    if (catLower.contains('breakdown') ||
-        catLower.contains('towing') ||
-        catLower.contains('emergency')) {
-      return Icons.warning;
-    }
-
-    // ⛓ Chain / sprocket (for bikes)
-    if (catLower.contains('chain') || catLower.contains('sprocket')) {
+    if (catLower.contains('filter')) return Icons.filter_alt;
+    if (catLower.contains('chain') || catLower.contains('belt'))
       return Icons.settings;
-    }
+    if (catLower.contains('insurance') || catLower.contains('policy'))
+      return Icons.shield;
 
-    // 🧊 Coolant
-    if (catLower.contains('coolant')) {
-      return Icons.ac_unit;
-    }
-
-    // 🧍 Driver / labour charge
-    if (catLower.contains('driver') || catLower.contains('labour')) {
-      return Icons.person;
-    }
-
-    // 🏪 Workshop / garage visit
-    if (catLower.contains('garage') ||
-        catLower.contains('workshop') ||
-        catLower.contains('mechanic')) {
-      return Icons.garage;
-    }
-    return Icons.handyman;
+    return Icons.build_circle_outlined;
   }
 }

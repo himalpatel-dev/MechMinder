@@ -4,7 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p; // For path manipulation
+import 'package:path/path.dart' as p;
 import '../service/database_helper.dart';
 import '../service/settings_provider.dart';
 
@@ -23,17 +23,22 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   List<String> _groupTitles = [];
   final Set<String> _expandedGroups = {};
 
-  // (Controllers for the dialog)
   final _docFormKey = GlobalKey<FormState>();
   final TextEditingController _typeController = TextEditingController();
-  final TextEditingController _customTypeController =
-      TextEditingController(); // <-- NEW
+  final TextEditingController _customTypeController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
 
   String? _tempFilePath;
 
-  // --- Define the standard list of types ---
-  final List<String> _docTypes = ['License', 'Registration', 'Other'];
+  final List<String> _docTypes = [
+    'License',
+    'Registration',
+    'Insurance',
+    'PUC',
+    'Invoice',
+    'Warranty Card',
+    'Other',
+  ];
 
   @override
   void initState() {
@@ -44,13 +49,12 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   @override
   void dispose() {
     _typeController.dispose();
-    _customTypeController.dispose(); // <-- NEW
+    _customTypeController.dispose();
     _descriptionController.dispose();
     super.dispose();
   }
 
   Future<void> _refreshDocumentList() async {
-    // (This function is unchanged)
     final allDocs = await dbHelper.queryAllGeneralDocuments();
     final Map<String, List<Map<String, dynamic>>> grouped = {};
     final List<String> groupTitles = [];
@@ -90,7 +94,6 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   }
 
   Future<void> _pickFile(Function setDialogState) async {
-    // (This function is unchanged)
     FilePickerResult? result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
@@ -100,25 +103,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       setDialogState(() {
         _tempFilePath = result.files.single.path;
       });
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('File attached: ${p.basename(_tempFilePath!)}'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
     }
   }
 
-  // --- THIS IS THE UPDATED "ADD" DIALOG ---
   void _showAddDocumentDialog() async {
     final allVehicles = await dbHelper.queryAllVehiclesWithNextReminder();
     if (!mounted) return;
 
     int? selectedVehicleId;
-
-    _typeController.text = 'License'; // Default
+    _typeController.text = 'License';
     _customTypeController.clear();
     _descriptionController.clear();
     _tempFilePath = null;
@@ -126,10 +119,20 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     showDialog(
       context: context,
       builder: (ctx) {
+        final primaryColor = Provider.of<SettingsProvider>(
+          context,
+          listen: false,
+        ).primaryColor;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
-              title: const Text('Add New Document'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: const Text(
+                'Add Document',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
               content: SingleChildScrollView(
                 child: Form(
                   key: _docFormKey,
@@ -138,9 +141,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                     children: [
                       DropdownButtonFormField<int>(
                         value: selectedVehicleId,
-                        hint: const Text('None (General)'),
-                        decoration: const InputDecoration(
-                          labelText: 'Vehicle (Optional)',
+                        isExpanded: true,
+                        decoration: _inputDecoration(
+                          'Related Vehicle (Optional)',
+                          Icons.directions_car,
+                          primaryColor,
                         ),
                         items: [
                           const DropdownMenuItem<int>(
@@ -152,6 +157,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                               value: vehicle[DatabaseHelper.columnId],
                               child: Text(
                                 '${vehicle[DatabaseHelper.columnMake]} ${vehicle[DatabaseHelper.columnModel]}',
+                                overflow: TextOverflow.ellipsis,
                               ),
                             );
                           }),
@@ -162,10 +168,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           });
                         },
                       ),
+                      const SizedBox(height: 16),
                       DropdownButtonFormField<String>(
                         value: _typeController.text,
-                        decoration: const InputDecoration(
-                          labelText: 'Document Type',
+                        decoration: _inputDecoration(
+                          'Document Type',
+                          Icons.category,
+                          primaryColor,
                         ),
                         items: _docTypes.map((String type) {
                           return DropdownMenuItem<String>(
@@ -179,49 +188,84 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                           });
                         },
                       ),
-
-                      // --- THIS IS THE FIX ---
-                      // Show this field ONLY if "Other" is selected
-                      if (_typeController.text == 'Other')
+                      if (_typeController.text == 'Other') ...[
+                        const SizedBox(height: 16),
                         TextFormField(
                           controller: _customTypeController,
-                          decoration: const InputDecoration(
-                            labelText: 'Please specify type',
+                          decoration: _inputDecoration(
+                            'Specify Type',
+                            Icons.edit,
+                            primaryColor,
                           ),
                           validator: (value) => (value == null || value.isEmpty)
-                              ? 'Please specify a type'
+                              ? 'Required'
                               : null,
                         ),
-
-                      // --- END OF FIX ---
+                      ],
+                      const SizedBox(height: 16),
                       TextFormField(
                         controller: _descriptionController,
-                        decoration: const InputDecoration(
-                          labelText: 'Description (Optional)',
+                        decoration: _inputDecoration(
+                          'Description (Optional)',
+                          Icons.description,
+                          primaryColor,
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              _tempFilePath == null
-                                  ? 'No file attached'
-                                  : p.basename(_tempFilePath!),
-                              style: const TextStyle(color: Colors.grey),
-                              overflow: TextOverflow.ellipsis,
+                      const SizedBox(height: 20),
+
+                      // File Picker Area
+                      InkWell(
+                        onTap: () => _pickFile(setDialogState),
+                        borderRadius: BorderRadius.circular(12),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            vertical: 16,
+                            horizontal: 12,
+                          ),
+                          decoration: BoxDecoration(
+                            border: Border.all(
+                              color: Colors.grey.shade400,
+                              style: BorderStyle.solid,
                             ),
+                            borderRadius: BorderRadius.circular(12),
+                            color: Colors.grey.shade50,
                           ),
-                          IconButton(
-                            icon: const Icon(Icons.attach_file),
-                            onPressed: () => _pickFile(setDialogState),
+                          child: Row(
+                            children: [
+                              Icon(
+                                _tempFilePath == null
+                                    ? Icons.attach_file
+                                    : Icons.check_circle,
+                                color: _tempFilePath == null
+                                    ? Colors.grey
+                                    : Colors.green,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  _tempFilePath == null
+                                      ? 'Tap to attach file (PDF/Img)'
+                                      : p.basename(_tempFilePath!),
+                                  style: TextStyle(
+                                    color: _tempFilePath == null
+                                        ? Colors.grey.shade600
+                                        : Colors.black87,
+                                    fontWeight: _tempFilePath == null
+                                        ? FontWeight.normal
+                                        : FontWeight.bold,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
                           ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
                 ),
               ),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
@@ -238,16 +282,22 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                       );
                       return;
                     }
-
                     if (_docFormKey.currentState!.validate()) {
                       await _saveDocument(selectedVehicleId);
-                      if (mounted) {
-                        Navigator.of(ctx).pop();
-                      }
+                      if (mounted) Navigator.of(ctx).pop();
                       _refreshDocumentList();
                     }
                   },
-                  child: const Text('Save'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: primaryColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text(
+                    'Save',
+                    style: TextStyle(color: Colors.white),
+                  ),
                 ),
               ],
             );
@@ -257,57 +307,62 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  // --- UPDATED SAVE FUNCTION ---
+  InputDecoration _inputDecoration(
+    String label,
+    IconData icon,
+    Color primaryColor,
+  ) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon, color: primaryColor, size: 20),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      isDense: true,
+    );
+  }
+
   Future<void> _saveDocument(int? vehicleId) async {
     String? finalFilePath = _tempFilePath;
 
-    // 1. Copy file to a permanent location
     if (_tempFilePath != null) {
       final appDir = await getApplicationDocumentsDirectory();
-      final String newPath = p.join(
-        appDir.path,
-        'general_documents',
-        p.basename(_tempFilePath!),
-      );
+      // Ensure unique filename to prevent overwrites
+      final fileName =
+          '${DateTime.now().millisecondsSinceEpoch}_${p.basename(_tempFilePath!)}';
+      final String newPath = p.join(appDir.path, 'general_documents', fileName);
       final newFile = File(newPath);
 
       await newFile.parent.create(recursive: true);
       await File(_tempFilePath!).copy(newPath);
       finalFilePath = newPath;
-      print("Saved document to: $finalFilePath");
     } else {
       return;
     }
 
-    // --- THIS IS THE FIX ---
-    // 2. Get the correct doc type
     String finalDocType;
     if (_typeController.text == 'Other') {
       finalDocType = _customTypeController.text;
     } else {
       finalDocType = _typeController.text;
     }
-    // --- END OF FIX ---
 
-    // 3. Create the row for the database
     Map<String, dynamic> row = {
       DatabaseHelper.columnVehicleId: vehicleId,
-      DatabaseHelper.columnDocType: finalDocType, // <-- Use the final type
+      DatabaseHelper.columnDocType: finalDocType,
       DatabaseHelper.columnDescription: _descriptionController.text.isNotEmpty
           ? _descriptionController.text
           : null,
       DatabaseHelper.columnFilePath: finalFilePath,
     };
 
-    // 4. Insert
     await dbHelper.insertGeneralDocument(row);
   }
 
-  // (Delete function is unchanged)
   void _showDeleteConfirmation(int id) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         title: const Text('Delete Document?'),
         content: const Text(
           'Are you sure you want to permanently delete this document? The attached file will also be deleted.',
@@ -320,7 +375,10 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.red,
-              foregroundColor: Colors.black,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
             ),
             onPressed: () async {
               final doc = await dbHelper.queryGeneralDocumentById(id);
@@ -331,9 +389,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 }
               }
               await dbHelper.deleteGeneralDocument(id);
-              if (mounted) {
-                Navigator.of(ctx).pop();
-              }
+              if (mounted) Navigator.of(ctx).pop();
               _refreshDocumentList();
             },
             child: const Text('Delete'),
@@ -343,24 +399,35 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     );
   }
 
-  // (Build method is unchanged)
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = settings.primaryColor;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Manage Documents')),
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
+      appBar: AppBar(
+        title: Text(
+          'Manage Documents',
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.grey.shade900,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        iconTheme: IconThemeData(
+          color: isDark ? Colors.white : Colors.grey.shade900,
+        ),
+      ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
           : _groupedDocuments.isEmpty
-          ? const Center(
-              child: Text(
-                'No documents found. Tap "+" to add one.',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-              ),
-            )
+          ? _buildEmptyState(isDark)
           : ListView.builder(
-              padding: const EdgeInsets.all(8.0).copyWith(bottom: 60),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
               itemCount: _groupTitles.length,
               itemBuilder: (context, index) {
                 final groupName = _groupTitles[index];
@@ -370,161 +437,295 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Container(
-                      margin: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 6,
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).highlightColor,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Material(
-                        color: Theme.of(context).highlightColor,
-                        elevation: 2,
-                        borderRadius: BorderRadius.circular(12),
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              if (isExpanded) {
-                                _expandedGroups.remove(groupName);
-                              } else {
-                                _expandedGroups.add(groupName);
-                              }
-                            });
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-                            child: Row(
-                              children: [
-                                Expanded(
-                                  child: Text(
-                                    groupName,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(fontWeight: FontWeight.bold),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                                Icon(
-                                  isExpanded
-                                      ? Icons.expand_less
-                                      : Icons.expand_more,
-                                  color: Colors.grey[600],
-                                ),
-                              ],
-                            ),
+                    // --- PARENT HEADER ---
+                    GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          if (isExpanded) {
+                            _expandedGroups.remove(groupName);
+                          } else {
+                            _expandedGroups.add(groupName);
+                          }
+                        });
+                      },
+                      child: Container(
+                        margin: const EdgeInsets.only(top: 12, bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isDark
+                              ? const Color(0xFF1E1E1E)
+                              : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: isDark
+                                ? Colors.white10
+                                : Colors.grey.shade200,
                           ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: isDark
+                                  ? Colors.black26
+                                  : Colors.grey.shade200,
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              padding: const EdgeInsets.all(8),
+                              decoration: BoxDecoration(
+                                color: primaryColor.withOpacity(0.1),
+                                shape: BoxShape.circle,
+                              ),
+                              child: Icon(
+                                isExpanded ? Icons.folder_open : Icons.folder,
+                                color: primaryColor,
+                                size: 20,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                groupName,
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 16,
+                                  color: isDark
+                                      ? Colors.white
+                                      : Colors.grey.shade800,
+                                ),
+                              ),
+                            ),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 4,
+                              ),
+                              decoration: BoxDecoration(
+                                color: isDark
+                                    ? Colors.grey.shade800
+                                    : Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    "${documentsForGroup.length}",
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                      color: isDark
+                                          ? Colors.white70
+                                          : Colors.grey.shade600,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Icon(
+                                    isExpanded
+                                        ? Icons.keyboard_arrow_up
+                                        : Icons.keyboard_arrow_down,
+                                    size: 16,
+                                    color: isDark
+                                        ? Colors.white70
+                                        : Colors.grey.shade600,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ),
 
+                    // --- INDENTED CHILDREN ---
                     AnimatedSize(
-                      duration: const Duration(milliseconds: 200),
+                      duration: const Duration(milliseconds: 300),
                       curve: Curves.easeInOut,
-                      child: Column(
-                        children: [
-                          if (isExpanded)
-                            ...documentsForGroup.map((doc) {
-                              return _buildDocumentCard(doc, settings);
-                            }),
-                        ],
-                      ),
+                      child: isExpanded
+                          ? Padding(
+                              padding: const EdgeInsets.only(
+                                left: 16,
+                              ), // Indentation
+                              child: Column(
+                                children: documentsForGroup.map((doc) {
+                                  return _buildDocumentCard(
+                                    doc,
+                                    isDark,
+                                    primaryColor,
+                                  );
+                                }).toList(),
+                              ),
+                            )
+                          : const SizedBox.shrink(),
                     ),
                   ],
                 );
               },
             ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          _showAddDocumentDialog();
-        },
-        child: const Icon(Icons.add),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: _showAddDocumentDialog,
+        backgroundColor: primaryColor,
+        icon: const Icon(Icons.upload_file, color: Colors.white),
+        label: const Text(
+          "Add Document",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
 
-  // (This helper is unchanged)
+  Widget _buildEmptyState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.folder_open_outlined,
+            size: 80,
+            color: Colors.grey.shade400,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            "No Documents Found",
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: isDark ? Colors.white70 : Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            "Store licenses, insurance, invoices & more.",
+            style: TextStyle(color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDocumentCard(
     Map<String, dynamic> doc,
-    SettingsProvider settings,
+    bool isDark,
+    Color primaryColor,
   ) {
     final String type = doc[DatabaseHelper.columnDocType] ?? 'Document';
     final String? description = doc[DatabaseHelper.columnDescription];
     final String? filePath = doc[DatabaseHelper.columnFilePath];
 
-    return Card(
-      margin: const EdgeInsets.fromLTRB(18, 4, 18, 8),
-      elevation: 2,
-      child: Container(
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          border: Border(
-            left: BorderSide(
-              // keep original color preference — used settings.primaryColor
-              color: settings.primaryColor,
-              width: 4,
-            ),
+    return Container(
+      margin: const EdgeInsets.only(
+        bottom: 12,
+      ), // Removed side margins handled by parent padding
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 4, // Softer shadow for children
+            offset: const Offset(0, 2),
           ),
-        ),
-        child: ListTile(
-          leading: Icon(
-            _getIconForDocType(type),
-            color: settings.primaryColor,
-            size: 30,
-          ),
-          title: Text(
-            type,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          subtitle: (description != null && description.isNotEmpty)
-              ? Text(
-                  description,
-                  style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-                )
+        ],
+        border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: filePath != null
+              ? () async {
+                  final result = await OpenFile.open(filePath);
+                  if (result.type != ResultType.done && mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Error: ${result.message}')),
+                    );
+                  }
+                }
               : null,
-          // keep single-line behavior if no subtitle; if description long, ListTile will handle it
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (filePath != null)
-                IconButton(
-                  icon: const Icon(Icons.open_in_new, color: Colors.blue),
-                  tooltip: 'Open File',
-                  onPressed: () async {
-                    final result = await OpenFile.open(filePath);
-                    if (result.type != ResultType.done) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Error: ${result.message}')),
-                      );
-                    }
-                  },
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _getIconForDocType(type),
+                    color: primaryColor,
+                    size: 24,
+                  ),
                 ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline, color: Colors.red),
-                tooltip: 'Delete Document',
-                onPressed: () {
-                  _showDeleteConfirmation(doc[DatabaseHelper.columnId]);
-                },
-              ),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        type,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.grey.shade800,
+                        ),
+                      ),
+                      if (description != null && description.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Text(
+                            description,
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade600,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(
+                    Icons.delete_outline_rounded,
+                    color: Colors.red.shade400,
+                    size: 22,
+                  ),
+                  onPressed: () =>
+                      _showDeleteConfirmation(doc[DatabaseHelper.columnId]),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // (This helper is unchanged)
   IconData _getIconForDocType(String type) {
     switch (type.toLowerCase()) {
       case 'license':
-        return Icons.badge;
+        return Icons.badge_outlined;
       case 'registration':
-        return Icons.article;
+      case 'rc':
+        return Icons.featured_play_list_outlined;
+      case 'insurance':
+        return Icons.shield_outlined;
+      case 'puc':
+        return Icons.eco_outlined;
+      case 'invoice':
+      case 'bill':
+        return Icons.receipt_long_outlined;
       default:
-        return Icons.description;
+        return Icons.description_outlined;
     }
   }
 }
