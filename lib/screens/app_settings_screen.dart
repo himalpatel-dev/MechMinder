@@ -10,6 +10,7 @@ import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../screens/vehicle_list.dart';
 import '../screens/all_reminders_screen.dart';
+import '../screens/onboarding_screen.dart'; // Add this import
 
 class AppSettingsScreen extends StatelessWidget {
   final GlobalKey<VehicleListScreenState> vehicleListKey;
@@ -396,6 +397,30 @@ class AppSettingsScreen extends StatelessWidget {
               subtitle: Text(settings.currencySymbol),
               onTap: () {
                 _showCurrencyDialog(context, settings);
+              },
+            ),
+
+            const Divider(),
+
+            // --- HELP SECTION ---
+            const ListTile(
+              title: Text(
+                'Help & Info',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.help_outline, color: settings.primaryColor),
+              title: const Text('App Tour'),
+              subtitle: const Text('See what MechMinder can do'),
+              onTap: () {
+                // Navigate to Onboarding with flag isFromSettings = true
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        const OnboardingScreen(isFromSettings: true),
+                  ),
+                );
               },
             ),
           ],

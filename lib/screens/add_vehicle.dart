@@ -77,8 +77,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     ]);
 
     final vehicle = data[0] as Map<String, dynamic>?;
-    _existingPhotos =
-        data[1] as List<Map<String, dynamic>>; // <-- SET EXISTING PHOTOS
+    _existingPhotos = List<Map<String, dynamic>>.from(
+      data[1] as List,
+    ); // <-- SET EXISTING PHOTOS
 
     if (vehicle != null) {
       _makeController.text = vehicle[DatabaseHelper.columnMake] ?? '';
@@ -103,6 +104,8 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
+        maxWidth: 1024, // Optimized: Reduces 12MP photos to ~1MP
+        imageQuality: 70, // Optimized: Good quality, typically 10x smaller file
       );
       if (pickedFile == null) return;
       setState(() {
@@ -171,7 +174,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     }
 
     // Helper widget for card sections
-    Widget _buildSectionCard(String title, List<Widget> children) {
+    Widget buildSectionCard(String title, List<Widget> children) {
       return Card(
         elevation: 2,
         child: Padding(
@@ -199,7 +202,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
           child: Column(
             children: [
               // --- 1. BASIC INFORMATION ---
-              _buildSectionCard('BASIC INFORMATION', [
+              buildSectionCard('BASIC INFORMATION', [
                 TextFormField(
                   controller: _makeController,
                   decoration: const InputDecoration(labelText: 'Brand *'),
@@ -295,7 +298,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               const SizedBox(height: 20),
 
               // --- 2. REGISTRATION DETAILS & ODOMETER ---
-              _buildSectionCard('REGISTRATION DETAILS', [
+              buildSectionCard('REGISTRATION DETAILS', [
                 TextFormField(
                   controller: _regNoController,
                   decoration: const InputDecoration(
@@ -337,7 +340,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
               const SizedBox(height: 20),
 
               // --- 3. PHOTO GALLERY ---
-              _buildSectionCard('PHOTO GALLERY', [
+              buildSectionCard('PHOTO GALLERY', [
                 SizedBox(
                   height: 100,
                   child: ListView.builder(

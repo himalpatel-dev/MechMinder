@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:mechminder/service/install_tracking_service.dart';
 import 'package:mechminder/widgets/splash_screen.dart'; // <-- NEW: Start on Splash Screen
 import 'package:provider/provider.dart';
 import 'service/settings_provider.dart';
-import 'package:firebase_core/firebase_core.dart';
 
 // --- REMOVED ALL OTHER IMPORTS (like workmanager, database, etc.) ---
 
@@ -14,13 +12,7 @@ Future<void> main() async {
   // 1. Ensure all Flutter bindings are ready
   WidgetsFlutterBinding.ensureInitialized();
 
-  // 2. Initialize Firebase
-  await Firebase.initializeApp();
-
-  // 3. Track App Install
-  InstallTrackingService().trackInstall();
-
-  // 4. Run the app
+  // 2. Run the app directly (Heavy init moved to SplashScreen)
   runApp(
     ChangeNotifierProvider(
       create: (context) => SettingsProvider(),

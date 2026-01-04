@@ -286,6 +286,8 @@ class VehicleListScreenState extends State<VehicleListScreen> {
       return Image.file(
         File(photoPath),
         fit: BoxFit.cover,
+        cacheWidth: 800, // Optimize memory for list items
+
         errorBuilder: (context, error, stackTrace) {
           return Container(
             color: Colors.grey[200],

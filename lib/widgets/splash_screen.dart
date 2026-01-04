@@ -1,61 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:lottie/lottie.dart'; // Import Lottie
+import 'package:shared_preferences/shared_preferences.dart';
+import '../screens/onboarding_screen.dart';
 import '../screens/home_screen.dart'; // Import your main home screen
 
 // --- ADD ALL THE IMPORTS FROM MAIN.DART ---
 import '../service/database_helper.dart';
 import '../service/notification_service.dart';
 import 'package:workmanager/workmanager.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-// --- END IMPORTS ---
 
-// --- THIS IS THE BACKGROUND TASK ---
-// It MUST be at the top level of a file.
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     final dbHelper = DatabaseHelper.instance;
     await dbHelper.database;
     await NotificationService().initialize();
-    await Firebase.initializeApp();
-
-    if (task == "sync_install_data") {
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        final bool isSynced = prefs.getBool('install_event_synced') ?? false;
-
-        // If not synced yet, do it now!
-        if (!isSynced) {
-          final String? installId = prefs.getString('app_install_id');
-
-          // We re-create the basic data needed
-          // (Note: We can't get full device info easily in background sometimes,
-          // so we send a basic ping or rely on the cached Firestore write)
-
-          if (installId != null) {
-            final firestore = FirebaseFirestore.instance;
-
-            // Just accessing Firestore here is often enough to flush the
-            // pending write queue we created earlier!
-            await firestore.enableNetwork();
-
-            // We can also force a write just to be sure
-            await firestore.collection('app_installs').doc(installId).update({
-              'background_sync': true,
-              'synced_at': DateTime.now().toIso8601String(),
-            });
-
-            await prefs.setBool('install_event_synced', true);
-            print("DATA SYNCED SUCCESSFULLY IN BACKGROUND");
-          }
-        }
-        return Future.value(true);
-      } catch (e) {
-        print("Background sync failed: $e");
-        return Future.value(false); // Returning false makes it retry later
-      }
-    }
 
     final String today = DateTime.now().toIso8601String().split('T')[0];
     print("Checking for reminders and papers due on: $today");
@@ -150,22 +109,19 @@ class _SplashScreenState extends State<SplashScreen> {
 
   // --- THIS IS THE NEW LOADING FUNCTION ---
   void _initializeAndNavigate() async {
-    // 1. Run your 3-second GIF timer
-    Future<void> gifTimer = Future.delayed(const Duration(seconds: 3));
+    // 0. Give the UI a moment to paint the first frame.
+    // This prevents "Skipped frames" right at the start.
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // 1. Run your GIF timer (Reduced to 3s for better UX, user can adjust)
+    Future<void> gifTimer = Future.delayed(const Duration(seconds: 4));
 
     // 2. Run all your app setup
     Future<void> appSetup = () async {
       try {
-        print("[Splash] Initializing Database...");
         await DatabaseHelper.instance.database;
-        print("[Splash] Database is initialized.");
-
-        print("[Splash] Initializing Notifications...");
         await NotificationService().initialize();
         await NotificationService().requestPermissions();
-        print("[Splash] Notifications initialized.");
-
-        print("[Splash] Initializing Workmanager...");
         await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
 
         await Workmanager().registerPeriodicTask(
@@ -181,22 +137,42 @@ class _SplashScreenState extends State<SplashScreen> {
       }
     }(); // The '()' here runs the function
 
-    // 3. Wait for BOTH the 3-second timer AND your setup to finish
+    // 3. Wait for BOTH the timer AND your setup to finish
     await Future.wait([gifTimer, appSetup]);
 
-    // 4. Now, navigate
+    // 4. Check Onboarding Status
+    final prefs = await SharedPreferences.getInstance();
+    final bool hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
+
+    // 5. Now, navigate
     if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const HomeScreen()),
-      );
+      if (hasSeenOnboarding) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const HomeScreen()),
+        );
+      } else {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (context) => const OnboardingScreen()),
+        );
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Color.fromARGB(252, 255, 255, 255),
-      body: Center(child: Image.asset('assets/images/splash.gif')),
+      backgroundColor:
+          Colors.white, // Lottie usually looks best on white or transparent
+      body: Container(
+        width: double.infinity,
+        height: double.infinity,
+        alignment: Alignment.center,
+        child: Lottie.asset(
+          'assets/animations/car_animation.json',
+          width: double.infinity,
+          fit: BoxFit.fitWidth,
+        ),
+      ),
     );
   }
 }

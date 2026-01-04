@@ -252,6 +252,91 @@ class ExcelService {
       }
       // --- END OF FIX ---
 
+      // --- 9. Build the "Papers" Sheet ---
+      Sheet paperSheet = excel['Papers'];
+      List<String> paperHeaders = [
+        'Type',
+        'Provider',
+        'Reference No',
+        'Description',
+        'Expiry Date',
+        'Cost (${settings.currencySymbol})',
+      ];
+      paperSheet.appendRow(
+        paperHeaders.map((header) => TextCellValue(header)).toList(),
+      );
+      for (var i = 0; i < paperHeaders.length; i++) {
+        paperSheet
+                .cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0))
+                .cellStyle =
+            headerStyle;
+        paperSheet.setColumnAutoFit(i);
+      }
+
+      final paperData = await dbHelper.queryVehiclePapersForVehicle(vehicleId);
+      double paperGrandTotal = 0.0;
+      List<int> paperDataRowIndexes = [];
+
+      for (var row in paperData) {
+        paperDataRowIndexes.add(paperSheet.maxRows);
+        paperSheet.appendRow([
+          TextCellValue(row[DatabaseHelper.columnPaperType] ?? ''),
+          TextCellValue(row[DatabaseHelper.columnProviderName] ?? 'N/A'),
+          TextCellValue(row[DatabaseHelper.columnReferenceNo] ?? 'N/A'),
+          TextCellValue(row[DatabaseHelper.columnDescription] ?? ''),
+          TextCellValue(row[DatabaseHelper.columnPaperExpiryDate] ?? ''),
+          TextCellValue((row[DatabaseHelper.columnCost] ?? '').toString()),
+        ]);
+
+        double? paperCost = double.tryParse(
+          (row[DatabaseHelper.columnCost] ?? '0').toString(),
+        );
+        if (paperCost != null) {
+          paperGrandTotal += paperCost;
+        }
+      }
+
+      // Add Total Row for Papers
+      paperSheet.appendRow([]); // Blank row
+      paperSheet.appendRow([
+        null,
+        null,
+        null,
+        null,
+        TextCellValue('Total:'),
+        TextCellValue(
+          '${settings.currencySymbol}${paperGrandTotal.toStringAsFixed(2)}',
+        ),
+      ]);
+      paperSheet
+              .cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: 4,
+                  rowIndex: paperSheet.maxRows - 1,
+                ),
+              )
+              .cellStyle =
+          totalStyle;
+      paperSheet
+              .cell(
+                CellIndex.indexByColumnRow(
+                  columnIndex: 5,
+                  rowIndex: paperSheet.maxRows - 1,
+                ),
+              )
+              .cellStyle =
+          totalStyle;
+
+      // Apply styles to data rows
+      for (int r in paperDataRowIndexes) {
+        for (int c = 0; c < paperHeaders.length; c++) {
+          final cell = paperSheet.cell(
+            CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r),
+          );
+          cell.cellStyle = dataStyle;
+        }
+      }
+
       // 9. Delete the default blank sheet
       excel.delete('Sheet1');
 

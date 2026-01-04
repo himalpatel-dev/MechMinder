@@ -172,6 +172,8 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     try {
       final XFile? pickedFile = await _picker.pickImage(
         source: ImageSource.gallery,
+        maxWidth: 1024, // Optimized: Reduces 12MP photos to ~1MP
+        imageQuality: 70, // Optimized: Good quality, typically 10x smaller file
       );
       if (pickedFile != null) {
         setState(() {

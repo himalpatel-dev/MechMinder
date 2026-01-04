@@ -245,6 +245,65 @@ class DatabaseHelper {
             FOREIGN KEY ($columnVehicleId) REFERENCES $tableVehicles ($columnId) ON DELETE CASCADE
           )
         ''');
+
+    // --- OPTIMIZATION: Indexes ---
+    // Adding indexes speed up specific queries significantly.
+
+    // 1. Vehicles
+    // (Id is already indexed by PK)
+
+    // 2. Services
+    await db.execute(
+      'CREATE INDEX idx_services_vehicle_id ON $tableServices ($columnVehicleId)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_services_date ON $tableServices ($columnServiceDate)',
+    );
+
+    // 3. Service Items
+    await db.execute(
+      'CREATE INDEX idx_service_items_service_id ON $tableServiceItems ($columnServiceId)',
+    );
+
+    // 4. Reminders
+    await db.execute(
+      'CREATE INDEX idx_reminders_vehicle_id ON $tableReminders ($columnVehicleId)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_reminders_status ON $tableReminders ($columnStatus)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_reminders_due_date ON $tableReminders ($columnDueDate)',
+    );
+
+    // 5. Expenses
+    await db.execute(
+      'CREATE INDEX idx_expenses_vehicle_id ON $tableExpenses ($columnVehicleId)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_expenses_category ON $tableExpenses ($columnCategory)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_expenses_date ON $tableExpenses ($columnServiceDate)',
+    );
+
+    // 6. Papers
+    await db.execute(
+      'CREATE INDEX idx_papers_vehicle_id ON $tableVehiclePapers ($columnVehicleId)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_papers_expiry ON $tableVehiclePapers ($columnPaperExpiryDate)',
+    );
+
+    // 7. Photos
+    await db.execute(
+      'CREATE INDEX idx_photos_parent ON $tablePhotos ($columnParentId, $columnParentType)',
+    );
+
+    // 8. Documents
+    await db.execute(
+      'CREATE INDEX idx_documents_vehicle_id ON $tableDocuments ($columnVehicleId)',
+    );
   }
 
   // --- FIX 3: REMOVE THE _onUpgrade FUNCTION ENTIRELY ---
@@ -481,7 +540,17 @@ class DatabaseHelper {
         ? (expenseTotalResult.first['total'] as num).toDouble()
         : 0.0;
 
-    return serviceTotal + expenseTotal;
+    // 3. Get total from Papers
+    final paperTotalResult = await db.rawQuery(
+      'SELECT SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ?',
+      [vehicleId],
+    );
+    double paperTotal =
+        paperTotalResult.isNotEmpty && paperTotalResult.first['total'] != null
+        ? (paperTotalResult.first['total'] as num).toDouble()
+        : 0.0;
+
+    return serviceTotal + expenseTotal + paperTotal;
   }
 
   // Gets a list of spending grouped by category
@@ -507,13 +576,31 @@ class DatabaseHelper {
         ? (serviceTotalResult.first['total'] as num).toDouble()
         : 0.0;
 
-    // Manually add the service total to our list
+    // 3. Get total from Papers, grouped by type (Insurance, PUC, etc)
+    final paperResult = await db.rawQuery(
+      'SELECT $columnPaperType, SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ? GROUP BY $columnPaperType',
+      [vehicleId],
+    );
+
+    // Manually add the service total AND papers to our list
     List<Map<String, dynamic>> results = List.from(categoryResult);
+
     if (serviceTotal > 0) {
       results.add({
         DatabaseHelper.columnCategory: 'Services', // Add a custom category
         'total': serviceTotal,
       });
+    }
+
+    // Add each paper type as a category
+    for (var row in paperResult) {
+      if (row['total'] != null && (row['total'] as num) > 0) {
+        results.add({
+          DatabaseHelper.columnCategory:
+              row[columnPaperType], // e.g. "Insurance"
+          'total': row['total'],
+        });
+      }
     }
 
     return results;
