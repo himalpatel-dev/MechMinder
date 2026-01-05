@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:lottie/lottie.dart'; // Import Lottie
 import 'package:shared_preferences/shared_preferences.dart';
@@ -122,7 +123,10 @@ class _SplashScreenState extends State<SplashScreen> {
         await DatabaseHelper.instance.database;
         await NotificationService().initialize();
         await NotificationService().requestPermissions();
-        await Workmanager().initialize(callbackDispatcher, isInDebugMode: true);
+        await Workmanager().initialize(
+          callbackDispatcher,
+          isInDebugMode: kDebugMode,
+        );
 
         await Workmanager().registerPeriodicTask(
           "1",
