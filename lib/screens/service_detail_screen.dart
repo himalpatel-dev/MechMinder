@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../service/database_helper.dart'; // Make sure this path is correct
-import '../service/settings_provider.dart'; // Make sure this path is correct
+import '../service/database_helper.dart';
+import '../service/settings_provider.dart';
 import 'add_service_screen.dart';
 import '../widgets/full_screen_photo_viewer.dart';
 
@@ -37,14 +37,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   }
 
   Future<void> _loadServiceDetails() async {
-    // We check if the widget is still "mounted" (on the screen)
-    // before updating the state.
     if (!mounted) return;
 
     try {
       final serviceData = await dbHelper.queryServiceById(widget.serviceId);
       if (serviceData == null) {
-        // If service was deleted, pop back
         if (mounted) Navigator.of(context).pop();
         return;
       }
@@ -71,7 +68,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
   }
 
-  // --- NEW: FUNCTION TO SHOW DELETE CONFIRMATION ---
   void _showDeleteConfirmation() {
     showDialog(
       context: context,
@@ -80,7 +76,6 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           title: const Text('Delete Service?'),
           content: const Text(
             'Are you sure you want to permanently delete this service record? All its parts and photos will be lost.',
-            // style: TextStyle(color: Colors.black),
           ),
           actions: [
             TextButton(
@@ -90,11 +85,9 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             ElevatedButton(
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red,
-                foregroundColor: Colors.black, // Black text
+                foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                // Delete all related data in a transaction
-                print("Deleting service, items, and photos...");
                 await dbHelper.deleteService(widget.serviceId);
                 await dbHelper.deleteAllServiceItemsForService(
                   widget.serviceId,
@@ -103,16 +96,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   widget.serviceId,
                   'service',
                 );
-
-                // --- 2. THIS IS THE FIX ---
-                // Delete all reminders linked to this service
-                print("Deleting associated reminders...");
                 await dbHelper.deleteRemindersByService(widget.serviceId);
-                // --- END OF FIX ---
 
                 if (mounted) {
-                  Navigator.of(ctx).pop(); // Close the dialog
-                  Navigator.of(context).pop(); // Pop back
+                  Navigator.of(ctx).pop();
+                  Navigator.of(context).pop();
                 }
               },
               child: const Text('Delete Permanently'),
@@ -126,11 +114,13 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
-    final Color myAppColor = settings.primaryColor;
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = settings.primaryColor;
+
     if (_isLoading) {
       return Scaffold(
         appBar: AppBar(title: const Text('Loading...')),
-        body: const Center(child: CircularProgressIndicator()),
+        body: Center(child: CircularProgressIndicator(color: primaryColor)),
       );
     }
 
@@ -142,13 +132,18 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
     }
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
       appBar: AppBar(
         title: Text(
           _service![DatabaseHelper.columnServiceName] ?? 'Service Detail',
+          style: const TextStyle(fontWeight: FontWeight.bold),
         ),
+        backgroundColor: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        foregroundColor: isDark ? Colors.white : Colors.black,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: Icon(Icons.edit, color: settings.primaryColor),
+            icon: Icon(Icons.edit, color: primaryColor),
             tooltip: 'Edit Service',
             onPressed: () {
               Navigator.push(
@@ -161,17 +156,15 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 ),
               ).then((_) {
-                _loadServiceDetails(); // Refresh after editing
+                _loadServiceDetails();
               });
             },
           ),
-          // --- NEW: DELETE BUTTON ---
           IconButton(
-            icon: Icon(Icons.delete_forever, color: settings.primaryColor),
+            icon: const Icon(Icons.delete_forever, color: Colors.redAccent),
             tooltip: 'Delete Service',
             onPressed: _showDeleteConfirmation,
           ),
-          // --- END OF NEW BUTTON ---
         ],
       ),
       body: SingleChildScrollView(
@@ -179,246 +172,396 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Details Card (Unchanged) ---
-            Card(
-              elevation: 4,
-              child: Column(
-                children: [
-                  _buildDetailTile(
-                    icon: Icons.calendar_today,
-                    title: 'Date',
-                    subtitle: _service![DatabaseHelper.columnServiceDate],
-                    primaryColor: myAppColor,
-                  ),
-                  _buildDetailTile(
-                    icon: Icons.speed,
-                    title: 'Odometer',
-                    subtitle:
-                        '${_service![DatabaseHelper.columnOdometer]} ${settings.unitType}',
-                    primaryColor: myAppColor,
-                  ),
-                  _buildDetailTile(
-                    icon: Icons.store,
-                    title: 'Workshop',
-                    subtitle: _service!['vendor_name'] ?? 'N/A',
-                    primaryColor: myAppColor,
-                  ),
-                  _buildDetailTile(
-                    icon: Icons.attach_money,
-                    title: 'Total Cost',
-                    subtitle:
-                        '${settings.currencySymbol}${_service![DatabaseHelper.columnTotalCost] ?? '0.00'}',
-                    isGreen: true,
-                    primaryColor: myAppColor,
-                  ),
-                  _buildDetailTile(
-                    icon: Icons.notes,
-                    title: 'Notes',
-                    subtitle: _service![DatabaseHelper.columnNotes] ?? 'N/A',
-                    isThreeLine: true,
-                    primaryColor: myAppColor,
-                  ),
-                ],
-              ),
-            ),
-
-            // --- Parts Card (Unchanged) ---
+            // --- Summary Card ---
+            _buildSummaryCard(settings, isDark, primaryColor),
             const SizedBox(height: 20),
-            Card(
-              elevation: 4,
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
+
+            // --- Parts List ---
+            if (_serviceItems.isNotEmpty) ...[
+              Text(
+                "PARTS & ITEMS",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white70 : Colors.grey.shade600,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildPartsList(settings, isDark),
+              const SizedBox(height: 24),
+            ],
+
+            // --- Photos Section ---
+            if (_servicePhotos.isNotEmpty) ...[
+              Text(
+                "PHOTOS",
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: isDark ? Colors.white70 : Colors.grey.shade600,
+                  letterSpacing: 1.0,
+                ),
+              ),
+              const SizedBox(height: 12),
+              _buildPhotosList(isDark),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryCard(
+    SettingsProvider settings,
+    bool isDark,
+    Color primaryColor,
+  ) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildInfoColumn(
+                "Date",
+                _service![DatabaseHelper.columnServiceDate],
+                Icons.calendar_today,
+                isDark,
+                primaryColor,
+              ),
+              _buildInfoColumn(
+                "Odometer",
+                '${_service![DatabaseHelper.columnOdometer]} ${settings.unitType}',
+                Icons.speed,
+                isDark,
+                primaryColor,
+                crossAlign: CrossAxisAlignment.end,
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+          Divider(color: isDark ? Colors.white10 : Colors.grey.shade100),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: primaryColor.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.store, color: primaryColor, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'PARTS / ITEMS (${_serviceItems.length})',
+                      "Workshop",
                       style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        // color: Theme.of(context).primaryColor,
+                        fontSize: 12,
+                        color: isDark ? Colors.white54 : Colors.grey.shade500,
                       ),
                     ),
-                    const Divider(height: 20),
-                    if (_serviceItems.isEmpty)
-                      const Text('No parts were added.')
-                    else
-                      DataTable(
-                        columnSpacing: 20,
-                        horizontalMargin: 0,
-                        headingRowHeight: 30,
-                        columns: const [
-                          DataColumn(
-                            label: Text(
-                              'Part',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Qty',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            numeric: true,
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Cost',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            numeric: true,
-                          ),
-                          DataColumn(
-                            label: Text(
-                              'Total',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            numeric: true,
-                          ),
-                        ],
-                        rows: _serviceItems.map((item) {
-                          final name = item[DatabaseHelper.columnName];
-                          final qty = (item[DatabaseHelper.columnQty] as num)
-                              .toDouble();
-                          final cost =
-                              (item[DatabaseHelper.columnUnitCost] as num)
-                                  .toDouble();
-                          final total =
-                              (item[DatabaseHelper.columnTotalCost] as num)
-                                  .toDouble();
-
-                          return DataRow(
-                            cells: [
-                              DataCell(Text(name)),
-                              DataCell(Text(qty.toString())),
-                              DataCell(
-                                Text(
-                                  '${settings.currencySymbol}${cost.toStringAsFixed(2)}',
-                                ),
-                              ),
-                              DataCell(
-                                Text(
-                                  '${settings.currencySymbol}${total.toStringAsFixed(2)}',
-                                ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
+                    Text(
+                      _service!['vendor_name'] ?? 'N/A',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? Colors.white : Colors.grey.shade800,
                       ),
+                    ),
                   ],
                 ),
               ),
-            ),
-
-            // --- Photos Card (Unchanged) ---
-            const SizedBox(height: 20),
-            _buildDetailCard(
-              title: 'Photos (${_servicePhotos.length})',
+            ],
+          ),
+          if (_service![DatabaseHelper.columnNotes] != null &&
+              _service![DatabaseHelper.columnNotes].toString().isNotEmpty) ...[
+            const SizedBox(height: 16),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                if (_servicePhotos.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.all(8.0),
-                    child: Text('No photos were added.'),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.withOpacity(0.1),
+                    shape: BoxShape.circle,
                   ),
-                if (_servicePhotos.isNotEmpty)
-                  SizedBox(
-                    height: 120,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _servicePhotos.length,
-                      itemBuilder: (context, index) {
-                        final photo = _servicePhotos[index];
-                        final photoPath = photo[DatabaseHelper.columnUri];
-                        return GestureDetector(
-                          onTap: () {
-                            final paths = _servicePhotos
-                                .map(
-                                  (photo) =>
-                                      photo[DatabaseHelper.columnUri] as String,
-                                )
-                                .toList();
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => FullScreenPhotoViewer(
-                                  photoPaths: paths,
-                                  initialIndex: index,
-                                ),
-                              ),
-                            );
-                          },
-                          child: Container(
-                            width: 120,
-                            height: 120,
-                            margin: const EdgeInsets.only(right: 8.0),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(8),
-                              image: DecorationImage(
-                                image: FileImage(File(photoPath)),
-                                fit: BoxFit.cover,
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                  child: const Icon(
+                    Icons.notes,
+                    color: Colors.orange,
+                    size: 20,
                   ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        "Notes",
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.white54 : Colors.grey.shade500,
+                        ),
+                      ),
+                      Text(
+                        _service![DatabaseHelper.columnNotes],
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDark ? Colors.white70 : Colors.grey.shade700,
+                          height: 1.4,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ],
             ),
           ],
-        ),
-      ),
-    );
-  }
-
-  // (Helper widget is unchanged)
-  Widget _buildDetailTile({
-    required IconData icon,
-    required String title,
-    required String subtitle,
-    required Color primaryColor,
-    bool isGreen = false,
-    bool isThreeLine = false,
-  }) {
-    return ListTile(
-      leading: Icon(icon, color: primaryColor),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-      subtitle: Text(
-        subtitle,
-        style: TextStyle(
-          fontSize: 16,
-          color: isGreen ? Colors.green[700] : null,
-          fontWeight: isGreen ? FontWeight.bold : FontWeight.normal,
-        ),
-      ),
-      isThreeLine: isThreeLine,
-    );
-  }
-
-  // (Helper widget is unchanged)
-  Widget _buildDetailCard({
-    required String title,
-    required List<Widget> children,
-  }) {
-    return Card(
-      elevation: 4,
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title.toUpperCase(),
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                // color: Theme.of(context).primaryColor,
+          const SizedBox(height: 24),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDark ? Colors.white10 : Colors.grey.shade200,
               ),
             ),
-            const Divider(height: 20),
-            ...children,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  "Total Cost",
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white70 : Colors.grey.shade700,
+                  ),
+                ),
+                Text(
+                  '${settings.currencySymbol}${_service![DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.green.shade600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoColumn(
+    String label,
+    String value,
+    IconData icon,
+    bool isDark,
+    Color primaryColor, {
+    CrossAxisAlignment crossAlign = CrossAxisAlignment.start,
+  }) {
+    return Column(
+      crossAxisAlignment: crossAlign,
+      children: [
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (crossAlign == CrossAxisAlignment.start) ...[
+              Icon(
+                icon,
+                size: 14,
+                color: isDark ? Colors.white54 : Colors.grey,
+              ),
+              const SizedBox(width: 4),
+            ],
+            Text(
+              label.toUpperCase(),
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: isDark ? Colors.white54 : Colors.grey.shade500,
+                letterSpacing: 0.5,
+              ),
+            ),
+            if (crossAlign == CrossAxisAlignment.end) ...[
+              const SizedBox(width: 4),
+              Icon(
+                icon,
+                size: 14,
+                color: isDark ? Colors.white54 : Colors.grey,
+              ),
+            ],
           ],
         ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: isDark ? Colors.white : Colors.grey.shade800,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPartsList(SettingsProvider settings, bool isDark) {
+    return Container(
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: _serviceItems.asMap().entries.map((entry) {
+          final index = entry.key;
+          final item = entry.value;
+          final isLast = index == _serviceItems.length - 1;
+          final name = item[DatabaseHelper.columnName];
+          final qty = (item[DatabaseHelper.columnQty] as num).toDouble();
+          final cost = (item[DatabaseHelper.columnUnitCost] as num).toDouble();
+          final total = (item[DatabaseHelper.columnTotalCost] as num)
+              .toDouble();
+
+          return Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.settings,
+                        color: Colors.blue,
+                        size: 18,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            name,
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 15,
+                              color: isDark
+                                  ? Colors.white
+                                  : Colors.grey.shade800,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '$qty x ${settings.currencySymbol}$cost',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '${settings.currencySymbol}${total.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                        color: isDark ? Colors.white70 : Colors.grey.shade800,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (!isLast)
+                Divider(
+                  height: 1,
+                  indent: 16,
+                  endIndent: 16,
+                  color: isDark ? Colors.white10 : Colors.grey.shade100,
+                ),
+            ],
+          );
+        }).toList(),
+      ),
+    );
+  }
+
+  Widget _buildPhotosList(bool isDark) {
+    return SizedBox(
+      height: 140,
+      child: ListView.builder(
+        scrollDirection: Axis.horizontal,
+        itemCount: _servicePhotos.length,
+        itemBuilder: (context, index) {
+          final photo = _servicePhotos[index];
+          final photoPath = photo[DatabaseHelper.columnUri];
+          return GestureDetector(
+            onTap: () {
+              final paths = _servicePhotos
+                  .map((photo) => photo[DatabaseHelper.columnUri] as String)
+                  .toList();
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => FullScreenPhotoViewer(
+                    photoPaths: paths,
+                    initialIndex: index,
+                  ),
+                ),
+              );
+            },
+            child: Container(
+              width: 140,
+              margin: const EdgeInsets.only(right: 12.0),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: isDark ? Colors.black26 : Colors.grey.shade300,
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+                image: DecorationImage(
+                  image: FileImage(File(photoPath)),
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }

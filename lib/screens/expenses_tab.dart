@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../service/database_helper.dart'; // Make sure this path is correct
-import '../service/settings_provider.dart'; // Make sure this path is correct
+import '../service/database_helper.dart';
+import '../service/settings_provider.dart';
+import '../widgets/common_popup.dart';
 
 enum ExpenseGrouping { byDate, byCategory }
 
@@ -20,10 +21,8 @@ class _ExpensesTabState extends State<ExpensesTab> {
   List<String> _allCategories = [];
   ExpenseGrouping _currentGrouping = ExpenseGrouping.byDate;
 
-  // --- THIS IS THE FIX: A FormKey for the dialog ---
   final _expenseFormKey = GlobalKey<FormState>();
 
-  // Controllers (unchanged)
   final TextEditingController _dateController = TextEditingController();
   final TextEditingController _categoryController = TextEditingController();
   final TextEditingController _amountController = TextEditingController();
@@ -36,7 +35,6 @@ class _ExpensesTabState extends State<ExpensesTab> {
   }
 
   Future<void> _refreshExpenseList() async {
-    // (This function is unchanged)
     final data = await Future.wait([
       dbHelper.queryExpensesForVehicle(widget.vehicleId),
       dbHelper.queryDistinctExpenseCategories(),
@@ -72,156 +70,137 @@ class _ExpensesTabState extends State<ExpensesTab> {
     showDialog(
       context: context,
       builder: (context) {
-        return AlertDialog(
-          title: Text(isEditing ? 'Edit Expense' : 'Add New Expense'),
-          content: SizedBox(
-            // --- THIS IS THE FIX ---
-            // You can set any width you want.
-            // Using MediaQuery makes it responsive (e.g., 90% of screen width)
-            width: MediaQuery.of(context).size.width * 0.9,
-
-            // --- END OF FIX ---
-            child: SingleChildScrollView(
-              // --- THIS IS THE FIX: Wrap content in a Form ---
-              child: Form(
-                key: _expenseFormKey, // Assign the key
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: _dateController,
-                      decoration: InputDecoration(
-                        labelText: 'Date',
-                        suffixIcon: Icon(
-                          Icons.calendar_today,
-                          color: settings.primaryColor,
-                        ),
-                      ),
-                      readOnly: true,
-                      onTap: () async {
-                        DateTime? pickedDate = await showDatePicker(
-                          context: context,
-                          initialDate:
-                              DateTime.tryParse(_dateController.text) ??
-                              DateTime.now(),
-                          firstDate: DateTime(2000),
-                          lastDate: DateTime(2101),
-                        );
-                        if (pickedDate != null) {
-                          _dateController.text = pickedDate
-                              .toIso8601String()
-                              .split('T')[0];
-                        }
-                      },
-                    ),
-                    Autocomplete<String>(
-                      initialValue: TextEditingValue(
-                        text: _categoryController.text,
-                      ),
-                      optionsBuilder: (TextEditingValue textEditingValue) {
-                        if (textEditingValue.text == '') {
-                          return const Iterable<String>.empty();
-                        }
-                        return _allCategories.where((String option) {
-                          return option.toLowerCase().contains(
-                            textEditingValue.text.toLowerCase(),
-                          );
-                        });
-                      },
-                      onSelected: (String selection) {
-                        _categoryController.text = selection;
-                      },
-                      fieldViewBuilder:
-                          (
-                            BuildContext context,
-                            TextEditingController fieldController,
-                            FocusNode fieldFocusNode,
-                            VoidCallback onFieldSubmitted,
-                          ) {
-                            _categoryController.text = fieldController.text;
-                            fieldController.addListener(() {
-                              _categoryController.text = fieldController.text;
-                            });
-
-                            return TextFormField(
-                              controller: fieldController,
-                              focusNode: fieldFocusNode,
-                              decoration: const InputDecoration(
-                                labelText: 'Category (e.g., Fuel, Insurance)',
-                              ),
-                              // --- THIS IS THE FIX: Add validator ---
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter a category';
-                                }
-                                return null;
-                              },
-                            );
-                          },
-                      optionsViewBuilder:
-                          (
-                            BuildContext context,
-                            AutocompleteOnSelected<String> onSelected,
-                            Iterable<String> options,
-                          ) {
-                            return Align(
-                              alignment: Alignment.topLeft,
-                              child: Material(
-                                elevation: 4.0,
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    maxHeight: 200,
-                                  ),
-                                  child: ListView.builder(
-                                    padding: EdgeInsets.zero,
-                                    shrinkWrap: true,
-                                    itemCount: options.length,
-                                    itemBuilder:
-                                        (BuildContext context, int index) {
-                                          final String option = options
-                                              .elementAt(index);
-                                          return InkWell(
-                                            onTap: () {
-                                              onSelected(option);
-                                            },
-                                            child: ListTile(
-                                              title: Text(option),
-                                            ),
-                                          );
-                                        },
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                    ),
-                    TextFormField(
-                      controller: _amountController,
-                      decoration: InputDecoration(
-                        labelText: 'Amount',
-                        prefixText: settings.currencySymbol,
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                      // --- THIS IS THE FIX: Add validator ---
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Please enter an amount';
-                        }
-                        if (double.tryParse(value) == null) {
-                          return 'Please enter a valid number';
-                        }
-                        return null;
-                      },
-                    ),
-                    TextFormField(
-                      controller: _notesController,
-                      decoration: const InputDecoration(labelText: 'Notes'),
-                    ),
-                  ],
+        return CommonPopup(
+          title: isEditing ? 'Edit Expense' : 'Add New Expense',
+          content: Form(
+            key: _expenseFormKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _buildTextField(
+                  _dateController,
+                  "Date",
+                  Icons.calendar_today,
+                  readOnly: true,
+                  onTap: () async {
+                    DateTime? pickedDate = await showDatePicker(
+                      context: context,
+                      initialDate:
+                          DateTime.tryParse(_dateController.text) ??
+                          DateTime.now(),
+                      firstDate: DateTime(2000),
+                      lastDate: DateTime(2101),
+                    );
+                    if (pickedDate != null) {
+                      _dateController.text = pickedDate.toIso8601String().split(
+                        'T',
+                      )[0];
+                    }
+                  },
                 ),
-              ),
+                const SizedBox(height: 12),
+                Autocomplete<String>(
+                  initialValue: TextEditingValue(
+                    text: _categoryController.text,
+                  ),
+                  optionsBuilder: (TextEditingValue textEditingValue) {
+                    if (textEditingValue.text == '') {
+                      return const Iterable<String>.empty();
+                    }
+                    return _allCategories.where((String option) {
+                      return option.toLowerCase().contains(
+                        textEditingValue.text.toLowerCase(),
+                      );
+                    });
+                  },
+                  onSelected: (String selection) {
+                    _categoryController.text = selection;
+                  },
+                  fieldViewBuilder:
+                      (
+                        BuildContext context,
+                        TextEditingController fieldController,
+                        FocusNode fieldFocusNode,
+                        VoidCallback onFieldSubmitted,
+                      ) {
+                        _categoryController.text = fieldController.text;
+                        fieldController.addListener(() {
+                          _categoryController.text = fieldController.text;
+                        });
+
+                        return _buildTextField(
+                          fieldController,
+                          "Category (e.g., Fuel)",
+                          Icons.category,
+                          focusNode: fieldFocusNode,
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter a category';
+                            }
+                            return null;
+                          },
+                        );
+                      },
+                  optionsViewBuilder:
+                      (
+                        BuildContext context,
+                        AutocompleteOnSelected<String> onSelected,
+                        Iterable<String> options,
+                      ) {
+                        return Align(
+                          alignment: Alignment.topLeft,
+                          child: Material(
+                            elevation: 4.0,
+                            borderRadius: BorderRadius.circular(8),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 200),
+                              child: ListView.builder(
+                                padding: EdgeInsets.zero,
+                                shrinkWrap: true,
+                                itemCount: options.length,
+                                itemBuilder: (BuildContext context, int index) {
+                                  final String option = options.elementAt(
+                                    index,
+                                  );
+                                  return InkWell(
+                                    onTap: () {
+                                      onSelected(option);
+                                    },
+                                    child: ListTile(title: Text(option)),
+                                  );
+                                },
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                ),
+                const SizedBox(height: 12),
+                _buildTextField(
+                  _amountController,
+                  "Amount",
+                  Icons.attach_money,
+                  keyboardType: const TextInputType.numberWithOptions(
+                    decimal: true,
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) {
+                      return 'Please enter an amount';
+                    }
+                    if (double.tryParse(value) == null) {
+                      return 'Please enter a valid number';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                _buildTextField(
+                  _notesController,
+                  "Notes",
+                  Icons.notes,
+                  maxLines: 2,
+                ),
+              ],
             ),
           ),
           actions: [
@@ -243,12 +222,15 @@ class _ExpensesTabState extends State<ExpensesTab> {
             ),
             ElevatedButton(
               onPressed: () {
-                // --- THIS IS THE FIX: Check form validity ---
                 if (_expenseFormKey.currentState!.validate()) {
                   _saveExpense(expense);
                   Navigator.of(context).pop();
                 }
               },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: settings.primaryColor,
+                foregroundColor: Colors.white,
+              ),
               child: const Text('Save'),
             ),
           ],
@@ -257,7 +239,37 @@ class _ExpensesTabState extends State<ExpensesTab> {
     );
   }
 
-  // (This function is unchanged)
+  Widget _buildTextField(
+    TextEditingController controller,
+    String label,
+    IconData icon, {
+    bool readOnly = false,
+    VoidCallback? onTap,
+    TextInputType? keyboardType,
+    int maxLines = 1,
+    FocusNode? focusNode,
+    String? Function(String?)? validator,
+  }) {
+    return TextFormField(
+      controller: controller,
+      readOnly: readOnly,
+      onTap: onTap,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      focusNode: focusNode,
+      validator: validator,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 12,
+        ),
+      ),
+    );
+  }
+
   void _saveExpense(Map<String, dynamic>? expense) async {
     bool isEditing = expense != null;
     Map<String, dynamic> row = {
@@ -276,7 +288,6 @@ class _ExpensesTabState extends State<ExpensesTab> {
     _refreshExpenseList();
   }
 
-  // (This function is unchanged)
   void _showDeleteConfirmation(int id) {
     showDialog(
       context: context,
@@ -284,7 +295,6 @@ class _ExpensesTabState extends State<ExpensesTab> {
         title: const Text('Delete Expense?'),
         content: const Text(
           'Are you sure you want to permanently delete this expense?',
-          //  style: TextStyle(color: Colors.black),
         ),
         actions: [
           TextButton(
@@ -294,7 +304,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
           ElevatedButton(
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
-              foregroundColor: Colors.black,
+              foregroundColor: Colors.white,
             ),
             onPressed: () async {
               await dbHelper.deleteExpense(id);
@@ -311,8 +321,9 @@ class _ExpensesTabState extends State<ExpensesTab> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = settings.primaryColor;
 
-    // (Grouping logic is unchanged)
     final Map<String, List<Map<String, dynamic>>> groupedExpenses = {};
     if (_currentGrouping == ExpenseGrouping.byDate) {
       for (var expense in _expenses) {
@@ -334,155 +345,238 @@ class _ExpensesTabState extends State<ExpensesTab> {
       }
     }
     final sortedGroups = groupedExpenses.keys.toList();
+    if (_currentGrouping == ExpenseGrouping.byDate) {
+      sortedGroups.sort((a, b) => b.compareTo(a)); // Descending date
+    } else {
+      sortedGroups.sort(); // Alphabetical category
+    }
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
           : Column(
               children: [
-                // (Toggle button is unchanged)
                 Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: SegmentedButton<ExpenseGrouping>(
-                    segments: [
-                      ButtonSegment(
-                        value: ExpenseGrouping.byDate,
-                        label: Text('By Date'),
-                        icon: Icon(
-                          Icons.calendar_month,
-                          color: settings.primaryColor,
-                        ),
-                      ),
-                      ButtonSegment(
-                        value: ExpenseGrouping.byCategory,
-                        label: Text('By Category'),
-                        icon: Icon(Icons.label, color: settings.primaryColor),
-                      ),
-                    ],
-                    selected: {_currentGrouping},
-                    onSelectionChanged: (Set<ExpenseGrouping> newSelection) {
-                      setState(() {
-                        _currentGrouping = newSelection.first;
-                      });
-                    },
-                  ),
+                  padding: const EdgeInsets.all(16.0),
+                  child: _buildCustomSegmentedControl(isDark, primaryColor),
                 ),
 
                 Expanded(
                   child: _expenses.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'No expenses found. \nTap the "+" button to add one!',
-                            style: TextStyle(fontSize: 16, color: Colors.grey),
-                            textAlign: TextAlign.center,
+                      ? Center(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                Icons.receipt_long_outlined,
+                                size: 80,
+                                color: Colors.grey.shade400,
+                              ),
+                              const SizedBox(height: 16),
+                              Text(
+                                'No Expenses Yet',
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDark
+                                      ? Colors.white70
+                                      : Colors.grey.shade600,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'Tap the + button to add one.',
+                                style: TextStyle(color: Colors.grey.shade500),
+                              ),
+                            ],
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.only(bottom: 60),
+                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 80),
                           itemCount: sortedGroups.length,
                           itemBuilder: (context, index) {
                             final groupName = sortedGroups[index];
                             final expensesForGroup =
                                 groupedExpenses[groupName]!;
 
-                            return Card(
-                              margin: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              elevation: 2,
-                              clipBehavior: Clip.antiAlias,
-                              child: ExpansionTile(
-                                shape: const Border(),
-                                collapsedShape: const Border(),
-                                title: Text(
-                                  _currentGrouping == ExpenseGrouping.byDate
-                                      ? _formatMonthHeader(groupName)
-                                      : groupName,
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16,
-                                    // color: Theme.of(context).primaryColor,
+                            // Calculate total for this group
+                            double groupTotal = 0;
+                            for (var e in expensesForGroup) {
+                              groupTotal +=
+                                  (e[DatabaseHelper.columnTotalCost] ?? 0.0)
+                                      as double;
+                            }
+
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 8.0,
+                                    horizontal: 4.0,
+                                  ),
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Text(
+                                        _currentGrouping ==
+                                                ExpenseGrouping.byDate
+                                            ? _formatMonthHeader(groupName)
+                                            : groupName,
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: isDark
+                                              ? Colors.white70
+                                              : Colors.grey.shade800,
+                                        ),
+                                      ),
+                                      Text(
+                                        '${settings.currencySymbol}${groupTotal.toStringAsFixed(2)}',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                          color: primaryColor,
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                initiallyExpanded: false,
-                                children: expensesForGroup.map((expense) {
-                                  return _buildExpenseCard(expense, settings);
-                                }).toList(),
-                              ),
+                                ...expensesForGroup.map((expense) {
+                                  return _buildExpenseCard(
+                                    expense,
+                                    settings,
+                                    isDark,
+                                    primaryColor,
+                                  );
+                                }),
+                                const SizedBox(height: 8),
+                              ],
                             );
                           },
                         ),
                 ),
               ],
             ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         onPressed: () {
           _showAddExpenseDialog(settings, expense: null);
         },
-        child: const Icon(Icons.add),
+        backgroundColor: primaryColor,
+        icon: const Icon(Icons.add, color: Colors.white),
+        label: const Text(
+          "Add Expense",
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
       ),
     );
   }
 
-  // (This widget builds the individual expense card - unchanged)
   Widget _buildExpenseCard(
     Map<String, dynamic> expense,
     SettingsProvider settings,
+    bool isDark,
+    Color primaryColor,
   ) {
     final String? notes = expense[DatabaseHelper.columnNotes];
     final String date = expense[DatabaseHelper.columnServiceDate];
-    String subtitleText = 'Date: $date';
-    if (notes != null && notes.isNotEmpty) {
-      subtitleText += ' ($notes)';
-    }
+    final String category =
+        expense[DatabaseHelper.columnCategory] ?? 'Uncategorized';
 
-    return InkWell(
-      onTap: () {
-        _showAddExpenseDialog(settings, expense: expense);
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.grey[200]!)),
-        ),
-        child: ListTile(
-          leading: Icon(
-            _getIconForCategory(expense[DatabaseHelper.columnCategory]),
-            color: settings.primaryColor,
-            size: 36,
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
-          title: Text(
-            expense[DatabaseHelper.columnCategory] ?? 'Expense',
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-          ),
-          subtitle: Text(
-            subtitleText,
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          isThreeLine: false,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                '${settings.currencySymbol}${expense[DatabaseHelper.columnTotalCost] ?? '0.00'}',
-                style: TextStyle(
-                  color: Colors.green[700],
-                  fontWeight: FontWeight.bold,
-                  fontSize: 15,
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            _showAddExpenseDialog(settings, expense: expense);
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: primaryColor.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _getIconForCategory(category),
+                    color: primaryColor,
+                    size: 24,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              Icon(Icons.chevron_right, color: Colors.grey[400]),
-            ],
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        category,
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                          color: isDark ? Colors.white : Colors.grey.shade800,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        date,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade500,
+                        ),
+                      ),
+                      if (notes != null && notes.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4.0),
+                          child: Text(
+                            notes,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark
+                                  ? Colors.white54
+                                  : Colors.grey.shade600,
+                              fontStyle: FontStyle.italic,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                Text(
+                  '${settings.currencySymbol}${expense[DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                  style: TextStyle(
+                    color: Colors.green.shade600,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // (Helper for smart icons - unchanged)
   IconData _getIconForCategory(String? category) {
     if (category == null) return Icons.monetization_on;
     String catLower = category.toLowerCase();
@@ -491,126 +585,86 @@ class _ExpensesTabState extends State<ExpensesTab> {
         catLower.contains('gas')) {
       return Icons.local_gas_station;
     }
-
-    // 🛡 Insurance
     if (catLower.contains('insurance') || catLower.contains('policy')) {
       return Icons.shield;
     }
-
-    // 🧼 Washing / Cleaning
     if (catLower.contains('wash') ||
         catLower.contains('clean') ||
         catLower.contains('detailing')) {
       return Icons.wash;
     }
-
-    // 🅿 Parking
     if (catLower.contains('parking') || catLower.contains('park')) {
       return Icons.local_parking;
     }
-
-    // 🛞 Tyres
     if (catLower.contains('tire') ||
         catLower.contains('tyre') ||
         catLower.contains('tyres')) {
       return Icons.tire_repair;
     }
-
-    // ⚙ Servicing / Maintenance
     if (catLower.contains('service') ||
         catLower.contains('maintenance') ||
         catLower.contains('checkup') ||
         catLower.contains('inspection')) {
       return Icons.build;
     }
-
-    // 🛢 Oil change
     if (catLower.contains('oil') || catLower.contains('engine oil')) {
       return Icons.oil_barrel;
     }
-
-    // 🧯 Brake pads / brake oil
     if (catLower.contains('brake')) {
       return Icons.car_repair;
     }
-
-    // 🔋 Battery
     if (catLower.contains('battery') || catLower.contains('accumulator')) {
       return Icons.battery_charging_full;
     }
-
-    // 💨 Air filter / filter replacement
     if (catLower.contains('filter')) {
       return Icons.filter_alt;
     }
-
-    // 💡 Lights / bulbs / indicators
     if (catLower.contains('light') ||
         catLower.contains('bulb') ||
         catLower.contains('indicator')) {
       return Icons.lightbulb;
     }
-
-    // 🚙 Accessories / modification
     if (catLower.contains('accessory') ||
         catLower.contains('modification') ||
         catLower.contains('sticker')) {
       return Icons.car_repair;
     }
-
-    // 🧰 Tools / spare parts
     if (catLower.contains('spare') ||
         catLower.contains('parts') ||
         catLower.contains('tool')) {
       return Icons.handyman;
     }
-
-    // 🚗 General vehicle cost
     if (catLower.contains('vehicle') ||
         catLower.contains('car') ||
         catLower.contains('bike')) {
       return Icons.directions_car;
     }
-
-    // 🧾 Tax / RTO / registration / license
     if (catLower.contains('rto') ||
         catLower.contains('tax') ||
         catLower.contains('registration') ||
         catLower.contains('license')) {
       return Icons.receipt_long;
     }
-
-    // 🧳 Trip / travel / toll / highway
     if (catLower.contains('trip') ||
         catLower.contains('toll') ||
         catLower.contains('highway') ||
         catLower.contains('travel')) {
       return Icons.add_road;
     }
-
-    // 🧯 Emergency / breakdown / towing
     if (catLower.contains('breakdown') ||
         catLower.contains('towing') ||
         catLower.contains('emergency')) {
       return Icons.warning;
     }
-
-    // ⛓ Chain / sprocket (for bikes)
     if (catLower.contains('chain') || catLower.contains('sprocket')) {
       return Icons.settings;
     }
-
-    // 🧊 Coolant
     if (catLower.contains('coolant')) {
       return Icons.ac_unit;
     }
-
-    // 🧍 Driver / labour charge
     if (catLower.contains('driver') || catLower.contains('labour')) {
       return Icons.person;
     }
-
-    // 🏪 Workshop / garage visit
     if (catLower.contains('garage') ||
         catLower.contains('workshop') ||
         catLower.contains('mechanic')) {
@@ -619,7 +673,6 @@ class _ExpensesTabState extends State<ExpensesTab> {
     return Icons.monetization_on;
   }
 
-  // (Helper to format "2025-11" - unchanged)
   String _formatMonthHeader(String monthYear) {
     try {
       final parts = monthYear.split('-');
@@ -646,5 +699,93 @@ class _ExpensesTabState extends State<ExpensesTab> {
     } catch (e) {
       return monthYear;
     }
+  }
+
+  Widget _buildCustomSegmentedControl(bool isDark, Color primaryColor) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF2C2C2C) : Colors.grey.shade200,
+        borderRadius: BorderRadius.circular(25),
+      ),
+      child: Row(
+        children: [
+          _buildSegmentButton(
+            text: 'By Date',
+            icon: Icons.calendar_month,
+            isSelected: _currentGrouping == ExpenseGrouping.byDate,
+            onTap: () =>
+                setState(() => _currentGrouping = ExpenseGrouping.byDate),
+            isDark: isDark,
+            primaryColor: primaryColor,
+          ),
+          _buildSegmentButton(
+            text: 'By Category',
+            icon: Icons.category,
+            isSelected: _currentGrouping == ExpenseGrouping.byCategory,
+            onTap: () =>
+                setState(() => _currentGrouping = ExpenseGrouping.byCategory),
+            isDark: isDark,
+            primaryColor: primaryColor,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSegmentButton({
+    required String text,
+    required IconData icon,
+    required bool isSelected,
+    required VoidCallback onTap,
+    required bool isDark,
+    required Color primaryColor,
+  }) {
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isSelected
+                ? (isDark ? const Color(0xFF424242) : Colors.white)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: isSelected
+                ? [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.1),
+                      blurRadius: 4,
+                      offset: const Offset(0, 2),
+                    ),
+                  ]
+                : [],
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 18,
+                color: isSelected
+                    ? primaryColor
+                    : (isDark ? Colors.grey : Colors.grey.shade600),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                text,
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: isSelected
+                      ? primaryColor
+                      : (isDark ? Colors.grey : Colors.grey.shade600),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

@@ -337,10 +337,41 @@ class OverviewTabState extends State<OverviewTab> {
                       const SizedBox(width: 10),
                       ElevatedButton(
                         onPressed: _saveOdometer,
-                        child: const Text('UPDATE'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: settings.primaryColor,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 14,
+                          ),
+                          elevation: 2,
+                        ),
+                        child: const Text(
+                          'UPDATE',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            letterSpacing: 1.0,
+                          ),
+                        ),
                       ),
                     ],
                   ),
+                  if (_vehicle != null &&
+                      _vehicle![DatabaseHelper.columnOdometerUpdatedAt] != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8.0),
+                      child: Text(
+                        'Last updated: ${_formatDate(_vehicle![DatabaseHelper.columnOdometerUpdatedAt])}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -642,6 +673,30 @@ class OverviewTabState extends State<OverviewTab> {
         return Icons.badge;
       default:
         return Icons.description;
+    }
+  }
+
+  String _formatDate(String? dateStr) {
+    if (dateStr == null || dateStr.isEmpty) return 'Never';
+    try {
+      final date = DateTime.parse(dateStr);
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      return '${months[date.month - 1]} ${date.day}, ${date.year}';
+    } catch (e) {
+      return dateStr;
     }
   }
 }

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart';
 import '../service/settings_provider.dart';
+import '../widgets/common_popup.dart';
 
 class AllRemindersScreen extends StatefulWidget {
   const AllRemindersScreen({super.key});
@@ -177,94 +178,84 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
       builder: (ctx) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-              title: const Text(
-                'Add Manual Reminder',
-                style: TextStyle(fontWeight: FontWeight.bold),
-              ),
+            return CommonPopup(
+              title: 'Add Manual Reminder',
               content: Form(
                 key: _manualReminderFormKey,
-                child: SingleChildScrollView(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      DropdownButtonFormField<int>(
-                        value: selectedVehicleId,
-                        decoration: _inputDecoration(
-                          'Select Vehicle',
-                          Icons.directions_car,
-                          primaryColor,
-                        ),
-                        items: allVehicles.map((vehicle) {
-                          return DropdownMenuItem<int>(
-                            value: vehicle[DatabaseHelper.columnId],
-                            child: Text(
-                              '${vehicle[DatabaseHelper.columnMake]} ${vehicle[DatabaseHelper.columnModel]}',
-                            ),
-                          );
-                        }).toList(),
-                        onChanged: (val) =>
-                            setDialogState(() => selectedVehicleId = val),
-                        validator: (value) => value == null ? 'Required' : null,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    DropdownButtonFormField<int>(
+                      value: selectedVehicleId,
+                      decoration: _inputDecoration(
+                        'Select Vehicle',
+                        Icons.directions_car,
+                        primaryColor,
                       ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _manualNameController,
-                        decoration: _inputDecoration(
-                          'Reminder Name',
-                          Icons.edit,
-                          primaryColor,
-                        ),
-                        validator: (val) =>
-                            (val == null || val.isEmpty) ? 'Required' : null,
+                      items: allVehicles.map((vehicle) {
+                        return DropdownMenuItem<int>(
+                          value: vehicle[DatabaseHelper.columnId],
+                          child: Text(
+                            '${vehicle[DatabaseHelper.columnMake]} ${vehicle[DatabaseHelper.columnModel]}',
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        );
+                      }).toList(),
+                      onChanged: (val) =>
+                          setDialogState(() => selectedVehicleId = val),
+                      validator: (value) => value == null ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _manualNameController,
+                      decoration: _inputDecoration(
+                        'Reminder Name',
+                        Icons.edit,
+                        primaryColor,
                       ),
-                      const SizedBox(height: 16),
-                      GestureDetector(
-                        onTap: () async {
-                          DateTime? picked = await showDatePicker(
-                            context: context,
-                            initialDate: DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime(2101),
-                          );
-                          if (picked != null) {
-                            _manualDateController.text = picked
-                                .toIso8601String()
-                                .split('T')[0];
-                          }
-                        },
-                        child: AbsorbPointer(
-                          child: TextFormField(
-                            controller: _manualDateController,
-                            decoration: _inputDecoration(
-                              'Due Date (Optional)',
-                              Icons.calendar_today,
-                              primaryColor,
-                            ),
+                      validator: (val) =>
+                          (val == null || val.isEmpty) ? 'Required' : null,
+                    ),
+                    const SizedBox(height: 16),
+                    GestureDetector(
+                      onTap: () async {
+                        DateTime? picked = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime(2101),
+                        );
+                        if (picked != null) {
+                          _manualDateController.text = picked
+                              .toIso8601String()
+                              .split('T')[0];
+                        }
+                      },
+                      child: AbsorbPointer(
+                        child: TextFormField(
+                          controller: _manualDateController,
+                          decoration: _inputDecoration(
+                            'Due Date (Optional)',
+                            Icons.calendar_today,
+                            primaryColor,
                           ),
                         ),
                       ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _manualOdoController,
-                        decoration: _inputDecoration(
-                          'Due ${settings.unitType} (Optional)',
-                          Icons.speed,
-                          primaryColor,
-                        ),
-                        keyboardType: TextInputType.number,
-                        inputFormatters: [
-                          FilteringTextInputFormatter.digitsOnly,
-                        ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextFormField(
+                      controller: _manualOdoController,
+                      decoration: _inputDecoration(
+                        'Due ${settings.unitType} (Optional)',
+                        Icons.speed,
+                        primaryColor,
                       ),
-                    ],
-                  ),
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    ),
+                  ],
                 ),
               ),
-              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.of(ctx).pop(),
@@ -493,13 +484,15 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                                       reminder[DatabaseHelper
                                           .columnPaperExpiryDate];
                                   if (dueDate != null &&
-                                      dueDate.compareTo(today) < 0)
+                                      dueDate.compareTo(today) < 0) {
                                     isOverdue = true;
+                                  }
                                   final int? dueOdo =
                                       reminder[DatabaseHelper
                                           .columnDueOdometer];
-                                  if (dueOdo != null && currentOdo >= dueOdo)
+                                  if (dueOdo != null && currentOdo >= dueOdo) {
                                     isOverdue = true;
+                                  }
 
                                   return _buildReminderCard(
                                     reminder,
@@ -517,7 +510,6 @@ class AllRemindersScreenState extends State<AllRemindersScreen> {
                 );
               },
             ),
-      // REMOVED FLOATING ACTION BUTTON HERE as per request
     );
   }
 

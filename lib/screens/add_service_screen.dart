@@ -872,18 +872,18 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               validator: (val) => val == null || val.isEmpty ? 'Req' : null,
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 5),
           Expanded(
             flex: 1,
             child: TextFormField(
               controller: item.qtyController,
-              decoration: itemDecoration("Qty"),
+              decoration: itemDecoration(""),
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
               onChanged: (_) => _updateTotalCost(),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 5),
           Expanded(
             flex: 2, // Gave it a bit more space
             child: TextFormField(
@@ -902,7 +902,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               onChanged: (_) => _updateTotalCost(),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 2),
           IconButton(
             icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
             onPressed: () {

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../service/database_helper.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
+import '../widgets/common_popup.dart';
 
 class ServiceTemplatesScreen extends StatefulWidget {
   const ServiceTemplatesScreen({super.key});
@@ -58,99 +59,72 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
           context,
           listen: false,
         ).primaryColor;
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+        return CommonPopup(
+          title: isEditing ? 'Edit Auto Part' : 'Add New Auto Part',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildTextField(
+                _nameController,
+                "Auto Part Name",
+                Icons.build_circle_outlined,
+                primaryColor,
+                true,
+              ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                _daysController,
+                "Days",
+                Icons.calendar_today,
+                primaryColor,
+                false,
+                TextInputType.number,
+              ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                _kmController,
+                "Interval (km)",
+                Icons.speed,
+                primaryColor,
+                false,
+                TextInputType.number,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                "Set default intervals for this part.",
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              ),
+            ],
           ),
-          title: Text(
-            isEditing ? 'Edit Auto Part' : 'Add New Auto Part',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTextField(
-                  _nameController,
-                  "Auto Part Name",
-                  Icons.build_circle_outlined,
-                  primaryColor,
-                  true,
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _buildTextField(
-                        _daysController,
-                        "Days",
-                        Icons.calendar_today,
-                        primaryColor,
-                        false,
-                        TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _buildTextField(
-                        _kmController,
-                        "Interval (km)",
-                        Icons.speed,
-                        primaryColor,
-                        false,
-                        TextInputType.number,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  "Set default intervals for this part.",
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                ),
-              ],
-            ),
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           actions: [
-            Row(
-              children: [
-                if (isEditing)
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _showDeleteConfirmation(
-                        template[DatabaseHelper.columnId],
-                      );
-                    },
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                    ),
-                    child: const Text('Delete'),
-                  ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
+            if (isEditing) ...[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _showDeleteConfirmation(template[DatabaseHelper.columnId]);
+                },
+                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                child: const Text('Delete'),
+              ),
+              const Spacer(),
+            ],
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () {
+                _saveTemplate(template);
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () {
-                    _saveTemplate(template);
-                    Navigator.of(context).pop();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
+              ),
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
             ),
           ],
         );
@@ -457,35 +431,43 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     // Fuel & Engine
     if (catLower.contains('fuel') ||
         catLower.contains('gas') ||
-        catLower.contains('petrol'))
+        catLower.contains('petrol')) {
       return Icons.local_gas_station;
-    if (catLower.contains('oil') || catLower.contains('fluid'))
+    }
+    if (catLower.contains('oil') || catLower.contains('fluid')) {
       return Icons.oil_barrel;
+    }
     if (catLower.contains('coolant')) return Icons.ac_unit;
     if (catLower.contains('battery')) return Icons.battery_charging_full;
 
     // Externals
     if (catLower.contains('tire') ||
         catLower.contains('tyre') ||
-        catLower.contains('wheel'))
+        catLower.contains('wheel')) {
       return Icons.tire_repair;
+    }
     if (catLower.contains('light') ||
         catLower.contains('bulb') ||
-        catLower.contains('lamp'))
+        catLower.contains('lamp')) {
       return Icons.lightbulb;
-    if (catLower.contains('wash') || catLower.contains('clean'))
+    }
+    if (catLower.contains('wash') || catLower.contains('clean')) {
       return Icons.wash;
+    }
 
     // Mechanical
     if (catLower.contains('brake') ||
         catLower.contains('pad') ||
-        catLower.contains('disk'))
+        catLower.contains('disk')) {
       return Icons.car_repair;
+    }
     if (catLower.contains('filter')) return Icons.filter_alt;
-    if (catLower.contains('chain') || catLower.contains('belt'))
+    if (catLower.contains('chain') || catLower.contains('belt')) {
       return Icons.settings;
-    if (catLower.contains('insurance') || catLower.contains('policy'))
+    }
+    if (catLower.contains('insurance') || catLower.contains('policy')) {
       return Icons.shield;
+    }
 
     return Icons.build_circle_outlined;
   }

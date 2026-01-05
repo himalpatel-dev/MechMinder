@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../service/database_helper.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
+import '../widgets/common_popup.dart';
 
 class VendorListScreen extends StatefulWidget {
   const VendorListScreen({super.key});
@@ -56,86 +57,69 @@ class _VendorListScreenState extends State<VendorListScreen> {
           context,
           listen: false,
         ).primaryColor;
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
+        return CommonPopup(
+          title: isEditing ? 'Edit Workshop' : 'Add New Workshop',
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildTextField(
+                _nameController,
+                "Workshop Name",
+                Icons.store,
+                primaryColor,
+                true,
+              ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                _phoneController,
+                "Phone",
+                Icons.phone,
+                primaryColor,
+                false,
+                TextInputType.phone,
+              ),
+              const SizedBox(height: 16),
+              _buildTextField(
+                _addressController,
+                "Address",
+                Icons.location_on,
+                primaryColor,
+                false,
+              ),
+            ],
           ),
-          title: Text(
-            isEditing ? 'Edit Workshop' : 'Add New Workshop',
-            style: const TextStyle(fontWeight: FontWeight.bold),
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                _buildTextField(
-                  _nameController,
-                  "Workshop Name",
-                  Icons.store,
-                  primaryColor,
-                  true,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  _phoneController,
-                  "Phone",
-                  Icons.phone,
-                  primaryColor,
-                  false,
-                  TextInputType.phone,
-                ),
-                const SizedBox(height: 16),
-                _buildTextField(
-                  _addressController,
-                  "Address",
-                  Icons.location_on,
-                  primaryColor,
-                  false,
-                ),
-              ],
-            ),
-          ),
-          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           actions: [
-            Row(
-              children: [
-                if (isEditing)
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).pop();
-                      _showDeleteConfirmation(
-                        vendor[DatabaseHelper.columnId],
-                        primaryColor,
-                      );
-                    },
-                    style: TextButton.styleFrom(
-                      foregroundColor: Colors.redAccent,
-                    ),
-                    child: const Text('Delete'),
-                  ),
-                const Spacer(),
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel'),
+            if (isEditing) ...[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  _showDeleteConfirmation(
+                    vendor[DatabaseHelper.columnId],
+                    primaryColor,
+                  );
+                },
+                style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+                child: const Text('Delete'),
+              ),
+              const Spacer(),
+            ],
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            const SizedBox(width: 8),
+            ElevatedButton(
+              onPressed: () {
+                _saveVendor(vendor);
+                Navigator.of(context).pop();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: primaryColor,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                const SizedBox(width: 8),
-                ElevatedButton(
-                  onPressed: () {
-                    _saveVendor(vendor);
-                    Navigator.of(context).pop();
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(color: Colors.white),
-                  ),
-                ),
-              ],
+              ),
+              child: const Text('Save', style: TextStyle(color: Colors.white)),
             ),
           ],
         );

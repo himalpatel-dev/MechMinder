@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart'; // <-- NEW: For SystemChrome
+// <-- NEW: For SystemChrome
 import 'package:mechminder/widgets/splash_screen.dart'; // <-- NEW: Start on Splash Screen
 import 'package:provider/provider.dart';
 import 'service/settings_provider.dart';

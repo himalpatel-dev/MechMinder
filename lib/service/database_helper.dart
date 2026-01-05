@@ -34,6 +34,8 @@ class DatabaseHelper {
   static const columnFuelType = 'fuel_type'; // <-- NEW
   static const columnVehicleColor = 'vehicle_color'; // <-- NEW
   static const columnOwnerName = 'owner_name'; // <-- NEW
+  static const columnOdometerUpdatedAt =
+      'odometer_updated_at'; // <-- NEW COLUMN
 
   // --- services Table Columns (NEW COLUMN ADDED) ---
   static const columnVehicleId = 'vehicle_id';
@@ -126,7 +128,8 @@ class DatabaseHelper {
           $columnRegNo TEXT,
           $columnOwnerName TEXT NOT NULL,  
           $columnInitialOdometer INTEGER,
-          $columnCurrentOdometer INTEGER
+          $columnCurrentOdometer INTEGER,
+          $columnOdometerUpdatedAt TEXT
         )
       ''');
 
@@ -411,7 +414,10 @@ class DatabaseHelper {
     Database db = await instance.database;
     return await db.update(
       tableVehicles,
-      {columnCurrentOdometer: newOdometer},
+      {
+        columnCurrentOdometer: newOdometer,
+        columnOdometerUpdatedAt: DateTime.now().toIso8601String(),
+      },
       where: '$columnId = ?',
       whereArgs: [id],
     );
@@ -517,13 +523,29 @@ class DatabaseHelper {
   }
 
   // Calculates the total cost from both services and expenses
-  Future<double> queryTotalSpending(int vehicleId) async {
+  Future<double> queryTotalSpending(
+    int vehicleId, {
+    String? startDate,
+    String? endDate,
+  }) async {
     Database db = await instance.database;
+
+    String serviceWhere = '$columnVehicleId = ?';
+    String expenseWhere = '$columnVehicleId = ?';
+    List<dynamic> serviceArgs = [vehicleId];
+    List<dynamic> expenseArgs = [vehicleId];
+
+    if (startDate != null && endDate != null) {
+      serviceWhere += ' AND $columnServiceDate BETWEEN ? AND ?';
+      expenseWhere += ' AND $columnServiceDate BETWEEN ? AND ?';
+      serviceArgs.addAll([startDate, endDate]);
+      expenseArgs.addAll([startDate, endDate]);
+    }
 
     // 1. Get total from Services
     final serviceTotalResult = await db.rawQuery(
-      'SELECT SUM($columnTotalCost) as total FROM $tableServices WHERE $columnVehicleId = ?',
-      [vehicleId],
+      'SELECT SUM($columnTotalCost) as total FROM $tableServices WHERE $serviceWhere',
+      serviceArgs,
     );
     double serviceTotal =
         serviceTotalResult.isNotEmpty &&
@@ -533,8 +555,8 @@ class DatabaseHelper {
 
     // 2. Get total from Expenses
     final expenseTotalResult = await db.rawQuery(
-      'SELECT SUM($columnTotalCost) as total FROM $tableExpenses WHERE $columnVehicleId = ?',
-      [vehicleId],
+      'SELECT SUM($columnTotalCost) as total FROM $tableExpenses WHERE $expenseWhere',
+      expenseArgs,
     );
     double expenseTotal =
         expenseTotalResult.isNotEmpty &&
@@ -542,35 +564,52 @@ class DatabaseHelper {
         ? (expenseTotalResult.first['total'] as num).toDouble()
         : 0.0;
 
-    // 3. Get total from Papers
-    final paperTotalResult = await db.rawQuery(
-      'SELECT SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ?',
-      [vehicleId],
-    );
-    double paperTotal =
-        paperTotalResult.isNotEmpty && paperTotalResult.first['total'] != null
-        ? (paperTotalResult.first['total'] as num).toDouble()
-        : 0.0;
+    // 3. Get total from Papers (Only if NO date filter is applied, as papers don't have a transaction date)
+    double paperTotal = 0.0;
+    if (startDate == null && endDate == null) {
+      final paperTotalResult = await db.rawQuery(
+        'SELECT SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ?',
+        [vehicleId],
+      );
+      paperTotal =
+          paperTotalResult.isNotEmpty && paperTotalResult.first['total'] != null
+          ? (paperTotalResult.first['total'] as num).toDouble()
+          : 0.0;
+    }
 
     return serviceTotal + expenseTotal + paperTotal;
   }
 
   // Gets a list of spending grouped by category
   Future<List<Map<String, dynamic>>> querySpendingByCategory(
-    int vehicleId,
-  ) async {
+    int vehicleId, {
+    String? startDate,
+    String? endDate,
+  }) async {
     Database db = await instance.database;
+
+    String serviceWhere = '$columnVehicleId = ?';
+    String expenseWhere = '$columnVehicleId = ?';
+    List<dynamic> serviceArgs = [vehicleId];
+    List<dynamic> expenseArgs = [vehicleId];
+
+    if (startDate != null && endDate != null) {
+      serviceWhere += ' AND $columnServiceDate BETWEEN ? AND ?';
+      expenseWhere += ' AND $columnServiceDate BETWEEN ? AND ?';
+      serviceArgs.addAll([startDate, endDate]);
+      expenseArgs.addAll([startDate, endDate]);
+    }
 
     // 1. Get spending from Expenses, grouped by category
     final categoryResult = await db.rawQuery(
-      'SELECT $columnCategory, SUM($columnTotalCost) as total FROM $tableExpenses WHERE $columnVehicleId = ? GROUP BY $columnCategory',
-      [vehicleId],
+      'SELECT $columnCategory, SUM($columnTotalCost) as total FROM $tableExpenses WHERE $expenseWhere GROUP BY $columnCategory',
+      expenseArgs,
     );
 
     // 2. Get total from Services and add it as its own "Service" category
     final serviceTotalResult = await db.rawQuery(
-      'SELECT SUM($columnTotalCost) as total FROM $tableServices WHERE $columnVehicleId = ?',
-      [vehicleId],
+      'SELECT SUM($columnTotalCost) as total FROM $tableServices WHERE $serviceWhere',
+      serviceArgs,
     );
     double serviceTotal =
         serviceTotalResult.isNotEmpty &&
@@ -578,31 +617,28 @@ class DatabaseHelper {
         ? (serviceTotalResult.first['total'] as num).toDouble()
         : 0.0;
 
-    // 3. Get total from Papers, grouped by type (Insurance, PUC, etc)
-    final paperResult = await db.rawQuery(
-      'SELECT $columnPaperType, SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ? GROUP BY $columnPaperType',
-      [vehicleId],
-    );
-
-    // Manually add the service total AND papers to our list
     List<Map<String, dynamic>> results = List.from(categoryResult);
+
+    // 3. Get total from Papers (Only if NO date filter is applied)
+    if (startDate == null && endDate == null) {
+      final paperResult = await db.rawQuery(
+        'SELECT $columnPaperType, SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ? GROUP BY $columnPaperType',
+        [vehicleId],
+      );
+      // Add papers to results, treating paper type as category
+      for (var row in paperResult) {
+        results.add({
+          DatabaseHelper.columnCategory: row[DatabaseHelper.columnPaperType],
+          'total': row['total'],
+        });
+      }
+    }
 
     if (serviceTotal > 0) {
       results.add({
         DatabaseHelper.columnCategory: 'Services', // Add a custom category
         'total': serviceTotal,
       });
-    }
-
-    // Add each paper type as a category
-    for (var row in paperResult) {
-      if (row['total'] != null && (row['total'] as num) > 0) {
-        results.add({
-          DatabaseHelper.columnCategory:
-              row[columnPaperType], // e.g. "Insurance"
-          'total': row['total'],
-        });
-      }
     }
 
     return results;

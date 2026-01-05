@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter_file_dialog/flutter_file_dialog.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
@@ -149,11 +150,55 @@ class AppSettingsScreen extends StatelessWidget {
       await file.writeAsBytes(zipBytes);
       print("Backup file created at: $filePath");
 
-      final xfile = XFile(filePath);
-      await Share.shareXFiles(
-        [xfile],
-        subject: 'MechMinder Data Backup (With Files)',
-        text: 'Here is the MechMinder backup file.',
+      if (!context.mounted) return;
+
+      // Ask user what to do
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Backup Created'),
+          content: const Text('How would you like to export the backup file?'),
+          actions: [
+            TextButton.icon(
+              icon: const Icon(Icons.share),
+              label: const Text('Share'),
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                final xfile = XFile(filePath);
+                await Share.shareXFiles(
+                  [xfile],
+                  subject: 'MechMinder Data Backup (With Files)',
+                  text: 'Here is the MechMinder backup file.',
+                );
+              },
+            ),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.save_alt),
+              label: const Text('Save to Device'),
+              onPressed: () async {
+                Navigator.of(ctx).pop();
+                try {
+                  final params = SaveFileDialogParams(sourceFilePath: filePath);
+                  final finalPath = await FlutterFileDialog.saveFile(
+                    params: params,
+                  );
+                  if (finalPath != null) {
+                    scaffoldMessenger.showSnackBar(
+                      SnackBar(
+                        content: Text('Saved to: $finalPath'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(content: Text('Error saving file: $e')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
       );
     } catch (e) {
       print("Error exporting data: $e");

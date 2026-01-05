@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../service/database_helper.dart'; // Make sure this path is correct
-import '../service/settings_provider.dart'; // Make sure this path is correct
+import '../service/database_helper.dart';
+import '../service/settings_provider.dart';
 import 'add_service_screen.dart';
 import 'service_detail_screen.dart';
 import 'package:flutter/rendering.dart';
@@ -21,6 +21,7 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
   int _currentOdometer = 0;
   late ScrollController _scrollController;
   bool _isFabVisible = true;
+
   @override
   void initState() {
     super.initState();
@@ -50,7 +51,6 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
   }
 
   Future<void> _refreshServiceList() async {
-    // (This function is unchanged)
     final data = await Future.wait([
       dbHelper.queryServicesForVehicle(widget.vehicleId),
       dbHelper.queryVehicleById(widget.vehicleId),
@@ -67,7 +67,6 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
   }
 
   void _navigateToAddService() {
-    // (This function is unchanged)
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -84,8 +83,10 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
   @override
   Widget build(BuildContext context) {
     final settings = Provider.of<SettingsProvider>(context);
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryColor = settings.primaryColor;
 
-    // --- NEW: Grouping Logic ---
+    // --- Grouping Logic ---
     final Map<String, List<Map<String, dynamic>>> groupedServices = {};
     for (var service in _serviceRecords) {
       final String monthYear = service[DatabaseHelper.columnServiceDate]
@@ -97,172 +98,254 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
     }
     final sortedMonths = groupedServices.keys.toList();
 
-    // --- THIS IS THE FIX ---
     // Sort the months in descending order (latest first)
     sortedMonths.sort((a, b) => b.compareTo(a));
-    // --- END OF FIX ---
-
-    // --- END OF NEW LOGIC ---
 
     return Scaffold(
+      backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(child: CircularProgressIndicator(color: primaryColor))
           : _serviceRecords.isEmpty
-          ? const Center(
-              child: Text(
-                'No service records found. \nTap the "+" button to add one!',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
-                textAlign: TextAlign.center,
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.history_edu_outlined,
+                    size: 80,
+                    color: Colors.grey.shade400,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No Service History',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white70 : Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Tap the button below to add a record.',
+                    style: TextStyle(color: Colors.grey.shade500),
+                  ),
+                ],
               ),
             )
           : ListView.builder(
               controller: _scrollController,
-              padding: const EdgeInsets.only(bottom: 60),
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 80),
               itemCount: sortedMonths.length,
               itemBuilder: (context, index) {
                 final monthYear = sortedMonths[index];
                 final servicesForMonth = groupedServices[monthYear]!;
 
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 14,
-                  ),
-                  elevation: 2,
-                  clipBehavior: Clip.antiAlias,
-                  child: ExpansionTile(
-                    shape: const Border(),
-                    collapsedShape: const Border(),
-                    title: Text(
-                      _formatMonthHeader(monthYear),
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                        //color: Theme.of(context).primaryColor,
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Month Header
+                    // Month Header
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          vertical: 8.0,
+                          horizontal: 4.0,
+                        ),
+                        child: Text(
+                          _formatMonthHeader(monthYear),
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 12,
+                            color: isDark
+                                ? Colors.white54
+                                : Colors.grey.shade600,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
                       ),
                     ),
-                    // Expand the first (latest) month by default
-                    initiallyExpanded: index == 0,
-                    children: servicesForMonth.map((record) {
-                      return _buildServiceCard(record, settings);
-                    }).toList(),
-                  ),
+                    // List of Services for this Month
+                    ...servicesForMonth.map((record) {
+                      return _buildServiceCard(
+                        record,
+                        settings,
+                        isDark,
+                        primaryColor,
+                      );
+                    }),
+                    const SizedBox(height: 8),
+                  ],
                 );
               },
             ),
       floatingActionButton: Visibility(
         visible: _isFabVisible,
-        child: FloatingActionButton(
+        child: FloatingActionButton.extended(
           onPressed: _navigateToAddService,
-          child: const Icon(Icons.add),
+          backgroundColor: primaryColor,
+          icon: const Icon(Icons.add, color: Colors.white),
+          label: const Text(
+            "Add Service",
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          ),
         ),
       ),
     );
   }
 
-  // (This widget builds the individual service card - unchanged)
   Widget _buildServiceCard(
     Map<String, dynamic> record,
     SettingsProvider settings,
+    bool isDark,
+    Color primaryColor,
   ) {
-    return InkWell(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ServiceDetailScreen(
-              serviceId: record[DatabaseHelper.columnId],
-              vehicleId: widget.vehicleId,
-              currentOdometer: _currentOdometer,
-            ),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: isDark ? Colors.black26 : Colors.grey.shade200,
+            blurRadius: 4,
+            offset: const Offset(0, 2),
           ),
-        ).then((_) {
-          _refreshServiceList();
-        });
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          border: Border(top: BorderSide(color: Colors.grey[300]!)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
-          child: Row(
-            children: [
-              const Icon(Icons.build, color: Colors.blue, size: 30),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      record[DatabaseHelper.columnServiceName] ?? 'Service',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    _buildIconRow(
-                      Icons.calendar_today,
-                      record[DatabaseHelper.columnServiceDate],
-                    ),
-                    const SizedBox(height: 2),
-                    _buildIconRow(
-                      Icons.speed,
-                      '${record[DatabaseHelper.columnOdometer] ?? 'N/A'} ${settings.unitType}',
-                    ),
-                    const SizedBox(height: 2),
-                    _buildIconRow(Icons.store, record['vendor_name'] ?? 'N/A'),
-                  ],
+        ],
+        border: Border.all(color: isDark ? Colors.white10 : Colors.transparent),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ServiceDetailScreen(
+                  serviceId: record[DatabaseHelper.columnId],
+                  vehicleId: widget.vehicleId,
+                  currentOdometer: _currentOdometer,
                 ),
               ),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${settings.currencySymbol}${record[DatabaseHelper.columnTotalCost] ?? '0.00'}',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.bold,
-                      fontSize: 15,
+            ).then((_) {
+              _refreshServiceList();
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: primaryColor.withOpacity(0.1),
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.build_circle_outlined,
+                        color: primaryColor,
+                        size: 24,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${record['item_count']} items',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  const SizedBox(height: 4),
-                  Icon(Icons.chevron_right, color: Colors.grey[400]),
-                ],
-              ),
-            ],
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            record[DatabaseHelper.columnServiceName] ??
+                                'Service',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              fontSize: 16,
+                              color: isDark
+                                  ? Colors.white
+                                  : Colors.grey.shade800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            record['vendor_name'] ?? 'Unknown Workshop',
+                            style: TextStyle(
+                              fontSize: 13,
+                              color: Colors.grey.shade500,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '${settings.currencySymbol}${record[DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                          style: TextStyle(
+                            color: Colors.green.shade600,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Divider(
+                  height: 1,
+                  color: isDark ? Colors.white10 : Colors.grey.shade100,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    _buildInfoChip(
+                      Icons.calendar_today,
+                      record[DatabaseHelper.columnServiceDate],
+                      isDark,
+                    ),
+                    _buildInfoChip(
+                      Icons.speed,
+                      '${record[DatabaseHelper.columnOdometer] ?? 'N/A'} ${settings.unitType}',
+                      isDark,
+                    ),
+                    _buildInfoChip(
+                      Icons.receipt_long,
+                      '${record['item_count']} Items',
+                      isDark,
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
     );
   }
 
-  // (Helper for icon rows - unchanged)
-  Widget _buildIconRow(IconData icon, String text) {
+  Widget _buildInfoChip(IconData icon, String text, bool isDark) {
     return Row(
       children: [
-        Icon(icon, size: 14, color: Colors.grey[600]),
-        const SizedBox(width: 6),
-        Expanded(
-          child: Text(
-            text,
-            style: TextStyle(fontSize: 14, color: Colors.grey[600]),
-            overflow: TextOverflow.ellipsis,
-            maxLines: 1,
+        Icon(icon, size: 14, color: Colors.grey.shade400),
+        const SizedBox(width: 4),
+        Text(
+          text,
+          style: TextStyle(
+            fontSize: 12,
+            color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
     );
   }
 
-  // (Helper to format "2025-11" - unchanged)
   String _formatMonthHeader(String monthYear) {
     try {
       final parts = monthYear.split('-');
