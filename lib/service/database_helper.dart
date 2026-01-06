@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 class DatabaseHelper {
   static const _databaseName = "VehicleManager.db";
   // --- We are keeping this at Version 1 ---
-  static const _databaseVersion = 1;
+  static const _databaseVersion = 2;
 
   // --- Table Names (unchanged) ---
   static const tableVehicles = 'vehicles';
@@ -104,7 +104,7 @@ class DatabaseHelper {
       version: _databaseVersion,
       onCreate: _onCreate,
       onConfigure: _onConfigure,
-      // No onUpgrade needed!
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -234,6 +234,7 @@ class DatabaseHelper {
         $columnCost REAL,
         $columnPaperExpiryDate TEXT,
         $columnFilePath TEXT, 
+        $columnCreatedAt TEXT DEFAULT (datetime('now', 'localtime')),
         FOREIGN KEY ($columnVehicleId) REFERENCES $tableVehicles ($columnId) ON DELETE CASCADE
       )
     ''');
@@ -297,6 +298,9 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX idx_papers_expiry ON $tableVehiclePapers ($columnPaperExpiryDate)',
     );
+    await db.execute(
+      'CREATE INDEX idx_papers_created_at ON $tableVehiclePapers ($columnCreatedAt)',
+    );
 
     // 7. Photos
     await db.execute(
@@ -309,7 +313,27 @@ class DatabaseHelper {
     );
   }
 
-  // --- FIX 3: REMOVE THE _onUpgrade FUNCTION ENTIRELY ---
+  // --- _onUpgrade (RESTORED) ---
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Version 2: Add created_at column to vehicle_papers
+      // We check if column exists first to be safe, though not strictly necessary if versioning is correct
+      // SQLite doesn't support IF NOT EXISTS for columns in ALTER TABLE directly in all versions,
+      // but since we control the version, we can assume it's needed.
+      try {
+        await db.execute(
+          'ALTER TABLE $tableVehiclePapers ADD COLUMN $columnCreatedAt TEXT DEFAULT (datetime(\'now\', \'localtime\'))',
+        );
+        // Add index for the new column
+        await db.execute(
+          'CREATE INDEX idx_papers_created_at ON $tableVehiclePapers ($columnCreatedAt)',
+        );
+      } catch (e) {
+        // Column might already exist if user had a dev build
+        print("Error adding column created_at: $e");
+      }
+    }
+  }
 
   // --- (All other helper functions) ---
   Future<int> insertVehicle(Map<String, dynamic> row) async {
@@ -564,18 +588,26 @@ class DatabaseHelper {
         ? (expenseTotalResult.first['total'] as num).toDouble()
         : 0.0;
 
-    // 3. Get total from Papers (Only if NO date filter is applied, as papers don't have a transaction date)
-    double paperTotal = 0.0;
-    if (startDate == null && endDate == null) {
-      final paperTotalResult = await db.rawQuery(
-        'SELECT SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ?',
-        [vehicleId],
-      );
-      paperTotal =
-          paperTotalResult.isNotEmpty && paperTotalResult.first['total'] != null
-          ? (paperTotalResult.first['total'] as num).toDouble()
-          : 0.0;
+    // 3. Get total from Papers
+    // Use created_at as the transaction date
+    String paperWhere = '$columnVehicleId = ?';
+    List<dynamic> paperArgs = [vehicleId];
+
+    if (startDate != null && endDate != null) {
+      // Assuming created_at is stored as 'YYYY-MM-DD...' string
+      // We only compare the date part
+      paperWhere += ' AND date($columnCreatedAt) BETWEEN ? AND ?';
+      paperArgs.addAll([startDate, endDate]);
     }
+
+    final paperTotalResult = await db.rawQuery(
+      'SELECT SUM($columnCost) as total FROM $tableVehiclePapers WHERE $paperWhere',
+      paperArgs,
+    );
+    double paperTotal =
+        paperTotalResult.isNotEmpty && paperTotalResult.first['total'] != null
+        ? (paperTotalResult.first['total'] as num).toDouble()
+        : 0.0;
 
     return serviceTotal + expenseTotal + paperTotal;
   }
@@ -619,19 +651,25 @@ class DatabaseHelper {
 
     List<Map<String, dynamic>> results = List.from(categoryResult);
 
-    // 3. Get total from Papers (Only if NO date filter is applied)
-    if (startDate == null && endDate == null) {
-      final paperResult = await db.rawQuery(
-        'SELECT $columnPaperType, SUM($columnCost) as total FROM $tableVehiclePapers WHERE $columnVehicleId = ? GROUP BY $columnPaperType',
-        [vehicleId],
-      );
-      // Add papers to results, treating paper type as category
-      for (var row in paperResult) {
-        results.add({
-          DatabaseHelper.columnCategory: row[DatabaseHelper.columnPaperType],
-          'total': row['total'],
-        });
-      }
+    // 3. Get total from Papers
+    String paperWhere = '$columnVehicleId = ?';
+    List<dynamic> paperArgs = [vehicleId];
+
+    if (startDate != null && endDate != null) {
+      paperWhere += ' AND date($columnCreatedAt) BETWEEN ? AND ?';
+      paperArgs.addAll([startDate, endDate]);
+    }
+
+    final paperResult = await db.rawQuery(
+      'SELECT $columnPaperType, SUM($columnCost) as total FROM $tableVehiclePapers WHERE $paperWhere GROUP BY $columnPaperType',
+      paperArgs,
+    );
+    // Add papers to results, treating paper type as category
+    for (var row in paperResult) {
+      results.add({
+        DatabaseHelper.columnCategory: row[DatabaseHelper.columnPaperType],
+        'total': row['total'],
+      });
     }
 
     if (serviceTotal > 0) {

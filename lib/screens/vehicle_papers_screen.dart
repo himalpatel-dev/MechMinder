@@ -353,6 +353,7 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
           _expiryDateController.text.isNotEmpty
           ? _expiryDateController.text
           : null,
+      DatabaseHelper.columnCreatedAt: DateTime.now().toIso8601String(),
       DatabaseHelper.columnFilePath: finalFilePath,
     };
 
