@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
 import 'vehicle_list.dart';
-import 'all_reminders_screen.dart';
+import 'todo_list_screen.dart';
 import 'master_screen.dart';
 import 'app_settings_screen.dart';
 import 'add_vehicle.dart';
@@ -29,12 +29,12 @@ class _HomeScreenState extends State<HomeScreen>
 
   // GlobalKeys to refresh our lists
   final GlobalKey<VehicleListScreenState> _vehicleListKey = GlobalKey();
-  final GlobalKey<AllRemindersScreenState> _allRemindersKey = GlobalKey();
+  final GlobalKey<TodoListScreenState> _todoListKey = GlobalKey();
 
   // --- NEW: Define the items for the bottom bar ---
   final List<BottomNavItem> _navItems = [
     BottomNavItem(icon: Icons.directions_car, title: 'Vehicles'),
-    BottomNavItem(icon: Icons.notifications_active, title: 'Reminders'),
+    BottomNavItem(icon: Icons.checklist, title: 'To-Do'),
     BottomNavItem(icon: Icons.apps, title: 'Master'),
     BottomNavItem(icon: Icons.settings, title: 'Settings'),
   ];
@@ -56,41 +56,6 @@ class _HomeScreenState extends State<HomeScreen>
   void dispose() {
     _tabController.dispose();
     super.dispose();
-  }
-
-  // --- (Floating Action Button logic is unchanged) ---
-  Widget? _buildFloatingActionButton() {
-    switch (_currentTabIndex) {
-      case 0: // Vehicles Tab
-        return FloatingActionButton(
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const AddVehicleScreen()),
-            ).then((_) {
-              _vehicleListKey.currentState?.refreshVehicleList();
-            });
-          },
-          child: const Icon(Icons.add),
-        );
-      case 1: // Reminders Tab
-        return FloatingActionButton(
-          onPressed: () {
-            final settings = Provider.of<SettingsProvider>(
-              context,
-              listen: false,
-            );
-            _allRemindersKey.currentState?.showAddManualReminderDialog(
-              settings,
-            );
-          },
-          child: const Icon(Icons.add),
-        );
-      case 2: // Master Tab
-      case 3: // Settings Tab
-      default:
-        return null;
-    }
   }
 
   // --- NEW: The custom item builder for the bottom bar ---
@@ -196,16 +161,72 @@ class _HomeScreenState extends State<HomeScreen>
           controller: _tabController,
           children: [
             VehicleListScreen(key: _vehicleListKey),
-            AllRemindersScreen(key: _allRemindersKey),
+            TodoListScreen(key: _todoListKey),
             const MasterScreen(),
             AppSettingsScreen(
               vehicleListKey: _vehicleListKey,
-              allRemindersKey: _allRemindersKey,
+              allRemindersKey: _todoListKey,
             ),
           ],
         ),
 
-        floatingActionButton: _buildFloatingActionButton(),
+        floatingActionButton: _currentTabIndex == 1
+            ? Stack(
+                children: [
+                  // Bottom-left button for completed todos
+                  Positioned(
+                    left: 30,
+                    bottom: 0,
+                    child: FloatingActionButton(
+                      heroTag: 'completedTodos',
+                      onPressed: () {
+                        _todoListKey.currentState?.showCompletedTodosDialog();
+                      },
+                      backgroundColor: Colors.green,
+                      foregroundColor: Colors.white,
+                      elevation: 6,
+                      child: const Icon(Icons.history, size: 28),
+                    ),
+                  ),
+                  // Bottom-right button for adding new todo
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: FloatingActionButton(
+                      heroTag: 'addTodo',
+                      onPressed: () {
+                        _todoListKey.currentState?.showAddTodoDialog();
+                      },
+                      child: const Icon(Icons.add),
+                    ),
+                  ),
+                ],
+              )
+            : _currentTabIndex == 0
+            ? Stack(
+                children: [
+                  // Bottom-right button for adding vehicle (same position as todo list)
+                  Positioned(
+                    right: 0,
+                    bottom: 0,
+                    child: FloatingActionButton(
+                      heroTag: 'addVehicle',
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const AddVehicleScreen(),
+                          ),
+                        ).then((_) {
+                          _vehicleListKey.currentState?.refreshVehicleList();
+                        });
+                      },
+                      child: const Icon(Icons.add),
+                    ),
+                  ),
+                ],
+              )
+            : null,
 
         // --- THIS IS THE FINAL, ANIMATED BOTTOM NAVIGATION ---
         bottomNavigationBar: SafeArea(
@@ -228,8 +249,6 @@ class _HomeScreenState extends State<HomeScreen>
             ),
           ),
         ),
-        // --- END OF FINAL BOTTOM NAVIGATION ---
-        // --- END OF FINAL BOTTOM NAVIGATION ---
       ),
     );
   }

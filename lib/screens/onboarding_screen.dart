@@ -71,7 +71,7 @@ class OnboardingScreen extends StatelessWidget {
         PageViewModel(
           title: "Never Miss a Service",
           body:
-              "Keep a detailed digital log of every repair, oil change, and part replacement. Know exactly what was done and when.",
+              "Track repairs & replacements and plan your next service. Know exactly what was done and when. ",
           image: Container(
             decoration: BoxDecoration(
               color: isDarkMode ? Colors.white : Colors.transparent,

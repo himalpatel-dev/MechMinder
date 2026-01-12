@@ -6,7 +6,7 @@ import 'package:path_provider/path_provider.dart';
 class DatabaseHelper {
   static const _databaseName = "VehicleManager.db";
   // --- We are keeping this at Version 1 ---
-  static const _databaseVersion = 2;
+  static const _databaseVersion = 1;
 
   // --- Table Names (unchanged) ---
   static const tableVehicles = 'vehicles';
@@ -17,10 +17,12 @@ class DatabaseHelper {
   static const tableVendors = 'vendors';
   static const tableExpenses = 'expenses';
   static const tablePhotos = 'photos';
+  static const tableTodoList = 'todolist';
 
   // --- Common Column Names (unchanged) ---
   static const columnId = '_id';
   static const columnCreatedAt = 'created_at';
+  static const columnUpdatedAt = 'updated_at';
 
   // --- vehicles Table Columns (unchanged) ---
   static const columnUserId = 'user_id';
@@ -60,6 +62,9 @@ class DatabaseHelper {
   // --- Documents (General) Table Columns ---
   static const tableDocuments = 'documents';
   static const columnDocType = 'doc_type';
+
+  // --- TodoList Table Columns ---
+  static const columnPartName = 'part_name';
 
   // --- (All other column names are unchanged) ---
   static const columnServiceId = 'service_id';
@@ -250,6 +255,20 @@ class DatabaseHelper {
           )
         ''');
 
+    // --- TodoList Table ---
+    await db.execute('''
+      CREATE TABLE $tableTodoList (
+        $columnId INTEGER PRIMARY KEY AUTOINCREMENT,
+        $columnVehicleId INTEGER NOT NULL,
+        $columnPartName TEXT NOT NULL,
+        $columnNotes TEXT,
+        $columnStatus TEXT NOT NULL DEFAULT 'pending',
+        $columnCreatedAt TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+        $columnUpdatedAt TEXT,
+        FOREIGN KEY ($columnVehicleId) REFERENCES $tableVehicles ($columnId) ON DELETE CASCADE
+      )
+    ''');
+
     // --- OPTIMIZATION: Indexes ---
     // Adding indexes speed up specific queries significantly.
 
@@ -311,6 +330,14 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX idx_documents_vehicle_id ON $tableDocuments ($columnVehicleId)',
     );
+
+    // 9. TodoList
+    await db.execute(
+      'CREATE INDEX idx_todolist_vehicle_id ON $tableTodoList ($columnVehicleId)',
+    );
+    await db.execute(
+      'CREATE INDEX idx_todolist_status ON $tableTodoList ($columnStatus)',
+    );
   }
 
   // --- _onUpgrade (RESTORED) ---
@@ -331,6 +358,18 @@ class DatabaseHelper {
       } catch (e) {
         // Column might already exist if user had a dev build
         print("Error adding column created_at: $e");
+      }
+    }
+
+    if (oldVersion < 3) {
+      // Version 3: Add updated_at column to todolist
+      try {
+        await db.execute(
+          'ALTER TABLE $tableTodoList ADD COLUMN $columnUpdatedAt TEXT',
+        );
+      } catch (e) {
+        // Column might already exist if user had a dev build
+        print("Error adding column updated_at to todolist: $e");
       }
     }
   }
@@ -802,6 +841,7 @@ class DatabaseHelper {
       // --- 1. WIPE ALL CURRENT DATA (in correct order) ---
       await txn.delete(tableDocuments); // Wipe last
       await txn.delete(tableVehiclePapers); // Wipe last
+      await txn.delete(tableTodoList); // Wipe todolist
       await txn.delete(tablePhotos);
       await txn.delete(tableServiceItems);
       await txn.delete(tableExpenses);
@@ -947,6 +987,16 @@ class DatabaseHelper {
         row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
         row[columnTemplateId] = templateIdMap[row[columnTemplateId]];
         await txn.insert(tableReminders, row as Map<String, dynamic>);
+      }
+
+      // TodoList
+      if (data.containsKey('todolist') && data['todolist'] != null) {
+        for (var row in (data['todolist'] as List)) {
+          row.remove(columnId);
+          // Update foreign key
+          row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
+          await txn.insert(tableTodoList, row as Map<String, dynamic>);
+        }
       }
 
       // Photos
@@ -1406,5 +1456,102 @@ class DatabaseHelper {
       limit: 1,
     );
     return result.isNotEmpty ? result.first : null;
+  }
+
+  // --- TodoList CRUD Functions ---
+
+  // Insert a new todo item
+  Future<int> insertTodoItem(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    return await db.insert(tableTodoList, row);
+  }
+
+  // Get all pending todo items across all vehicles
+  Future<List<Map<String, dynamic>>> queryAllPendingTodos() async {
+    Database db = await instance.database;
+    final String sql =
+        '''
+      SELECT 
+        t.*,
+        v.$columnMake,
+        v.$columnModel,
+        v.$columnRegNo
+      FROM $tableTodoList t
+      LEFT JOIN $tableVehicles v ON v.$columnId = t.$columnVehicleId
+      WHERE t.$columnStatus = 'pending'
+      ORDER BY t.$columnCreatedAt DESC
+    ''';
+    return await db.rawQuery(sql);
+  }
+
+  // Get all todo items for a specific vehicle
+  Future<List<Map<String, dynamic>>> queryTodosForVehicle(int vehicleId) async {
+    Database db = await instance.database;
+    return await db.query(
+      tableTodoList,
+      where: '$columnVehicleId = ?',
+      whereArgs: [vehicleId],
+      orderBy: '$columnCreatedAt DESC',
+    );
+  }
+
+  // Get all completed todo items across all vehicles
+  Future<List<Map<String, dynamic>>> queryAllCompletedTodos() async {
+    Database db = await instance.database;
+    final String sql =
+        '''
+      SELECT 
+        t.*,
+        v.$columnMake,
+        v.$columnModel,
+        v.$columnRegNo
+      FROM $tableTodoList t
+      LEFT JOIN $tableVehicles v ON v.$columnId = t.$columnVehicleId
+      WHERE t.$columnStatus = 'completed'
+      ORDER BY t.$columnUpdatedAt DESC, t.$columnCreatedAt DESC
+    ''';
+    return await db.rawQuery(sql);
+  }
+
+  // Update todo status (pending/completed)
+  Future<int> updateTodoStatus(int id, String status) async {
+    Database db = await instance.database;
+
+    // Prepare the update map
+    Map<String, dynamic> updateData = {columnStatus: status};
+
+    // If marking as completed, set the updated_at timestamp
+    if (status == 'completed') {
+      updateData[columnUpdatedAt] = DateTime.now().toIso8601String();
+    }
+
+    return await db.update(
+      tableTodoList,
+      updateData,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Delete a todo item
+  Future<int> deleteTodoItem(int id) async {
+    Database db = await instance.database;
+    return await db.delete(
+      tableTodoList,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  // Update a todo item
+  Future<int> updateTodoItem(Map<String, dynamic> row) async {
+    Database db = await instance.database;
+    int id = row[columnId];
+    return await db.update(
+      tableTodoList,
+      row,
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
   }
 }

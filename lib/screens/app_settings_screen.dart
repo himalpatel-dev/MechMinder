@@ -10,14 +10,14 @@ import '../service/database_helper.dart'; // Make sure this path is correct
 import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../screens/vehicle_list.dart';
-import '../screens/all_reminders_screen.dart';
+import '../screens/todo_list_screen.dart';
 import '../screens/onboarding_screen.dart'; // Add this import
 import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 
 class AppSettingsScreen extends StatelessWidget {
   final GlobalKey<VehicleListScreenState> vehicleListKey;
-  final GlobalKey<AllRemindersScreenState> allRemindersKey;
+  final GlobalKey<TodoListScreenState> allRemindersKey;
   const AppSettingsScreen({
     super.key,
     required this.vehicleListKey,
@@ -62,6 +62,9 @@ class AppSettingsScreen extends StatelessWidget {
       final allDocuments = await dbHelper.queryAllRows(
         DatabaseHelper.tableDocuments,
       );
+      final allTodos = await dbHelper.queryAllRows(
+        DatabaseHelper.tableTodoList,
+      );
 
       Map<String, dynamic> backupData = {
         'export_date': DateTime.now().toIso8601String(),
@@ -75,6 +78,7 @@ class AppSettingsScreen extends StatelessWidget {
         'photos': allPhotos,
         'vehicle_papers': allPapers,
         'documents': allDocuments,
+        'todolist': allTodos,
       };
 
       // Create Archive
@@ -344,7 +348,7 @@ class AppSettingsScreen extends StatelessWidget {
       // --- REFRESH LOGIC ---
       // 1. Refresh the lists using the keys
       vehicleListKey.currentState?.refreshVehicleList();
-      allRemindersKey.currentState?.refreshReminderList();
+      allRemindersKey.currentState?.refreshTodoList();
 
       // 2. Show success and switch to the first tab
       scaffoldMessenger.showSnackBar(
