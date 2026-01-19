@@ -1,4 +1,4 @@
-package com.hnp.mechminder
+package com.himal.mechminder
 
 import io.flutter.embedding.android.FlutterActivity
 
