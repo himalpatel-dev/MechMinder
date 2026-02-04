@@ -14,6 +14,8 @@ import '../screens/todo_list_screen.dart';
 import '../screens/onboarding_screen.dart'; // Add this import
 import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
+import '../service/subscription_provider.dart';
+import '../screens/paywall_screen.dart';
 
 class AppSettingsScreen extends StatelessWidget {
   final GlobalKey<VehicleListScreenState> vehicleListKey;
@@ -484,8 +486,8 @@ class AppSettingsScreen extends StatelessWidget {
   // --- UPDATED BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
-    return Consumer<SettingsProvider>(
-      builder: (context, settings, child) {
+    return Consumer2<SettingsProvider, SubscriptionProvider>(
+      builder: (context, settings, subProvider, child) {
         return ListView(
           padding: const EdgeInsets.only(bottom: 60),
           children: [
@@ -500,17 +502,56 @@ class AppSettingsScreen extends StatelessWidget {
             ListTile(
               leading: Icon(
                 Icons.download_for_offline,
-                color: settings.primaryColor,
+                color: subProvider.isPremium
+                    ? settings.primaryColor
+                    : Colors.grey,
               ),
               title: const Text('Export Backup (Zip)'),
-              subtitle: const Text('Save all data and files together'),
-              onTap: () => _exportData(context),
+              subtitle: Text(
+                subProvider.isPremium
+                    ? 'Save all data and files together'
+                    : 'Premium Feature',
+              ),
+              trailing: subProvider.isPremium
+                  ? null
+                  : const Icon(Icons.lock, size: 20, color: Colors.grey),
+              onTap: () {
+                if (subProvider.isPremium) {
+                  _exportData(context);
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PaywallScreen()),
+                  );
+                }
+              },
             ),
             ListTile(
-              leading: Icon(Icons.upload_file, color: settings.primaryColor),
+              leading: Icon(
+                Icons.upload_file,
+                color: subProvider.isPremium
+                    ? settings.primaryColor
+                    : Colors.grey,
+              ),
               title: const Text('Restore Backup'),
-              subtitle: const Text('Restore from a Zip or Json file'),
-              onTap: () => _importData(context),
+              subtitle: Text(
+                subProvider.isPremium
+                    ? 'Restore from a Zip or Json file'
+                    : 'Premium Feature',
+              ),
+              trailing: subProvider.isPremium
+                  ? null
+                  : const Icon(Icons.lock, size: 20, color: Colors.grey),
+              onTap: () {
+                if (subProvider.isPremium) {
+                  _importData(context);
+                } else {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const PaywallScreen()),
+                  );
+                }
+              },
             ),
 
             const Divider(),

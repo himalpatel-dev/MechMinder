@@ -1,4 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/foundation.dart';
 
 // --- THIS IS THE NEW CHANNEL WE WILL CREATE ---
 const AndroidNotificationChannel channel = AndroidNotificationChannel(
@@ -57,12 +59,12 @@ class NotificationService {
 
   // 5. Request Permissions (This is simpler now)
   Future<void> requestPermissions() async {
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.requestNotificationsPermission();
+    // Android 13+ requires explicit permission
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
 
+    // iOS legacy
     await _notificationsPlugin
         .resolvePlatformSpecificImplementation<
           IOSFlutterLocalNotificationsPlugin
@@ -76,7 +78,9 @@ class NotificationService {
   ) async {
     final String? payload = notificationResponse.payload;
     if (payload != null) {
-      print('Notification payload: $payload');
+      if (kDebugMode) {
+        print('Notification payload: $payload');
+      }
     }
   }
 
@@ -110,6 +114,8 @@ class NotificationService {
       payload: 'reminder_id_$id',
     );
 
-    print("IMMEDIATE notification shown for ID: $id");
+    if (kDebugMode) {
+      print("IMMEDIATE notification shown for ID: $id");
+    }
   }
 }

@@ -4,6 +4,9 @@ import 'package:lottie/lottie.dart'; // Import Lottie
 import 'package:shared_preferences/shared_preferences.dart';
 import '../screens/onboarding_screen.dart';
 import '../screens/home_screen.dart'; // Import your main home screen
+import '../screens/paywall_screen.dart';
+import '../service/subscription_provider.dart';
+import 'package:provider/provider.dart';
 
 // --- ADD ALL THE IMPORTS FROM MAIN.DART ---
 import '../service/database_helper.dart';
@@ -18,7 +21,9 @@ void callbackDispatcher() {
     await NotificationService().initialize();
 
     final String today = DateTime.now().toIso8601String().split('T')[0];
-    print("Checking for reminders and papers due on: $today");
+    if (kDebugMode) {
+      print("Checking for reminders and papers due on: $today");
+    }
 
     // --- 1. Check for Service Reminders ---
     final allReminders = await dbHelper.queryAllPendingRemindersWithVehicle();
@@ -50,9 +55,11 @@ void callbackDispatcher() {
             'Service';
         final body = 'Your "$serviceName" service is due!';
 
-        print(
-          "  > Reminder $serviceName (ID: $reminderId) is DUE. Sending notification.",
-        );
+        if (kDebugMode) {
+          print(
+            "  > Reminder $serviceName (ID: $reminderId) is DUE. Sending notification.",
+          );
+        }
 
         await NotificationService().showImmediateReminder(
           id: reminderId,
@@ -64,7 +71,9 @@ void callbackDispatcher() {
 
     // --- 2. NEW: Check for Expiring Papers ---
     final expiringPapers = await dbHelper.queryVehiclePapersExpiringOn(today);
-    print("Found ${expiringPapers.length} papers expiring today.");
+    if (kDebugMode) {
+      print("Found ${expiringPapers.length} papers expiring today.");
+    }
 
     for (final paper in expiringPapers) {
       final String vehicleName =
@@ -72,9 +81,11 @@ void callbackDispatcher() {
       final String paperType = paper[DatabaseHelper.columnPaperType] ?? 'Paper';
       final String body = 'Your $paperType for $vehicleName expires today!';
 
-      print(
-        "  > Paper $paperType (ID: ${paper[DatabaseHelper.columnId]}) is EXPIRING. Sending notification.",
-      );
+      if (kDebugMode) {
+        print(
+          "  > Paper $paperType (ID: ${paper[DatabaseHelper.columnId]}) is EXPIRING. Sending notification.",
+        );
+      }
 
       // Use a high-level unique ID for paper notifications
       int notificationId = 100000 + (paper[DatabaseHelper.columnId] as int);
@@ -87,7 +98,9 @@ void callbackDispatcher() {
     }
     // --- END NEW ---
 
-    print("--- Background Task Complete ---");
+    if (kDebugMode) {
+      print("--- Background Task Complete ---");
+    }
     return Future.value(true);
   });
 }
@@ -111,7 +124,6 @@ class _SplashScreenState extends State<SplashScreen> {
   // --- THIS IS THE NEW LOADING FUNCTION ---
   void _initializeAndNavigate() async {
     // 0. Give the UI a moment to paint the first frame.
-    // This prevents "Skipped frames" right at the start.
     await Future.delayed(const Duration(milliseconds: 200));
 
     // 1. Run your GIF timer (Reduced to 3s for better UX, user can adjust)
@@ -134,21 +146,49 @@ class _SplashScreenState extends State<SplashScreen> {
           frequency: const Duration(days: 1),
           initialDelay: const Duration(minutes: 15),
         );
-        print("[Splash] Workmanager task registered.");
+        if (kDebugMode) {
+          print("[Splash] Workmanager task registered.");
+        }
       } catch (e) {
-        print("!!! ERROR DURING APP INIT: $e");
-        // We can show an error here if we want
+        if (kDebugMode) {
+          print("!!! ERROR DURING APP INIT: $e");
+        }
       }
-    }(); // The '()' here runs the function
+    }();
 
     // 3. Wait for BOTH the timer AND your setup to finish
     await Future.wait([gifTimer, appSetup]);
 
-    // 4. Check Onboarding Status
+    // 4. Check Subscription Status
+    if (!mounted) return;
+    final subProvider = Provider.of<SubscriptionProvider>(
+      context,
+      listen: false,
+    );
+
+    // Wait for provider to initialize just in case
+    int retries = 0;
+    while (subProvider.isLoading && retries < 50) {
+      await Future.delayed(const Duration(milliseconds: 100));
+      retries++;
+    }
+
+    if (!subProvider.canAccessApp) {
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (context) => const PaywallScreen(isBarrier: true),
+          ),
+        );
+      }
+      return;
+    }
+
+    // 5. Check Onboarding Status
     final prefs = await SharedPreferences.getInstance();
     final bool hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
 
-    // 5. Now, navigate
+    // 6. Now, navigate
     if (mounted) {
       if (hasSeenOnboarding) {
         Navigator.of(context).pushReplacement(

@@ -9,3 +9,13 @@
 # Allow missing Play Store classes for deferred components
 -dontwarn com.google.android.play.core.**
 -dontwarn io.flutter.embedding.engine.deferredcomponents.**
+
+# Flutter Local Notifications
+-keep class com.dexterous.flutterlocalnotifications.** { *; }
+
+# Workmanager
+-keep class dev.fluttercommunity.plus.workmanager.** { *; }
+-keep class androidx.work.** { *; }
+
+# Permission Handler
+-keep class com.baseflow.permissionhandler.** { *; }

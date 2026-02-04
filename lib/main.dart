@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:mechminder/widgets/splash_screen.dart'; // <-- NEW: Start on Splash Screen
 import 'package:provider/provider.dart';
 import 'service/settings_provider.dart';
+import 'service/subscription_provider.dart';
 
 // --- REMOVED ALL OTHER IMPORTS (like workmanager, database, etc.) ---
 
@@ -27,8 +28,11 @@ Future<void> main() async {
 
   // 2. Run the app directly (Heavy init moved to SplashScreen)
   runApp(
-    ChangeNotifierProvider(
-      create: (context) => SettingsProvider(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (context) => SettingsProvider()),
+        ChangeNotifierProvider(create: (context) => SubscriptionProvider()),
+      ],
       child: const MyApp(),
     ),
   );

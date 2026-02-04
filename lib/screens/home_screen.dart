@@ -6,6 +6,7 @@ import 'todo_list_screen.dart';
 import 'master_screen.dart';
 import 'app_settings_screen.dart';
 import 'add_vehicle.dart';
+import '../service/notification_service.dart';
 
 // --- NEW: Define the structure for the navigation items ---
 class BottomNavItem {
@@ -49,6 +50,11 @@ class _HomeScreenState extends State<HomeScreen>
       setState(() {
         _currentTabIndex = _tabController.index;
       });
+    });
+
+    // --- RE-CHECK PERMISSIONS ON HOME SCREEN LOAD ---
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      await NotificationService().requestPermissions();
     });
   }
 

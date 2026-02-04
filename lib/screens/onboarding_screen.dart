@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:introduction_screen/introduction_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:lottie/lottie.dart'; // Add this import
+import 'package:permission_handler/permission_handler.dart';
 import 'home_screen.dart';
 
 class OnboardingScreen extends StatelessWidget {
@@ -11,6 +12,9 @@ class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key, this.isFromSettings = false});
 
   Future<void> _onIntroEnd(BuildContext context) async {
+    // 0. Ensure Permission Requested before leaving
+    await Permission.notification.request();
+
     // 1. Save that we have seen the onboarding
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('hasSeenOnboarding', true);
