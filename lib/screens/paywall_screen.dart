@@ -21,6 +21,8 @@ class PaywallScreen extends StatelessWidget {
     }
 
     return Scaffold(
+      resizeToAvoidBottomInset: false, // Prevent background resize on keyboard
+      backgroundColor: Colors.white,
       body: Consumer<SubscriptionProvider>(
         builder: (context, subProvider, child) {
           // Listen for success and close screen
@@ -104,7 +106,7 @@ class PaywallScreen extends StatelessWidget {
                     // Features List
                     _buildFeatureRow(
                       Icons.backup,
-                      "Secure Cloud Backup",
+                      "Any Time Backup / Restore",
                       Colors.white,
                     ),
                     _buildFeatureRow(
@@ -198,23 +200,6 @@ class PaywallScreen extends StatelessWidget {
                         style: TextStyle(color: Colors.white70),
                       ),
                     ),
-
-                    const SizedBox(height: 12),
-
-                    // Debug Info
-                    Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Text(
-                        "Debug: Products Loaded: ${subProvider.products.length}\nID: lifetime_subscription_79",
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white30,
-                          fontSize: 10,
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 24),
                   ],
                 ),
               ),
@@ -266,41 +251,163 @@ class PaywallScreen extends StatelessWidget {
     SubscriptionProvider subProvider,
   ) {
     final TextEditingController codeController = TextEditingController();
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text("Enter Secret Code"),
-        content: TextField(
-          controller: codeController,
-          decoration: const InputDecoration(hintText: "Code"),
-          obscureText: true,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text("Cancel"),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (codeController.text == "kismisH") {
-                await subProvider.activateSecretOverride();
-                if (ctx.mounted) {
-                  Navigator.of(ctx).pop(); // Close dialog
-                  // The main listener in build() will handle closing the screen
-                  ScaffoldMessenger.of(ctx).showSnackBar(
-                    const SnackBar(
-                      content: Text("Secret Code Accepted!"),
-                      backgroundColor: Colors.green,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24),
+        child: SingleChildScrollView(
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                ),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                // Header Icon
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: colorScheme.primary.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.lock_open_rounded,
+                    size: 32,
+                    color: colorScheme.primary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Title
+                Text(
+                  "Enter Secret Code",
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  "Input your special access code below.",
+                  textAlign: TextAlign.center,
+                  style: theme.textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // TextField
+                TextField(
+                  controller: codeController,
+                  obscureText: true,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    letterSpacing: 2,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: "••••••",
+                    hintStyle: TextStyle(
+                      color: Colors.grey[400],
+                      letterSpacing: 2,
                     ),
-                  );
-                }
-              } else {
-                if (ctx.mounted) Navigator.of(ctx).pop();
-              }
-            },
-            child: const Text("Unlock"),
+                    fillColor: Colors.grey[100],
+                    filled: true,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(ctx).pop(),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: Text(
+                          "Cancel",
+                          style: TextStyle(
+                            color: Colors.grey[600],
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () async {
+                          if (codeController.text == "kismisH") {
+                            await subProvider.activateSecretOverride();
+                            if (ctx.mounted) {
+                              Navigator.of(ctx).pop(); // Close dialog
+                              ScaffoldMessenger.of(ctx).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Secret Code Accepted!"),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            }
+                          } else {
+                            // Shake animation or error indication could go here
+                            if (ctx.mounted) {
+                              Navigator.of(ctx).pop();
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text("Invalid Code"),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                          }
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: colorScheme.primary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text(
+                          "Unlock",
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
-        ],
+        ),
       ),
     );
   }
