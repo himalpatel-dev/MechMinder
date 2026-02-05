@@ -75,7 +75,6 @@ class SubscriptionProvider with ChangeNotifier {
   Future<void> _initIAP() async {
     _available = await _iap.isAvailable();
     if (!_available) {
-      print("IAP not available");
       return;
     }
 
@@ -85,12 +84,8 @@ class SubscriptionProvider with ChangeNotifier {
       (List<PurchaseDetails> purchaseDetailsList) {
         _listenToPurchaseUpdated(purchaseDetailsList);
       },
-      onDone: () {
-        print("IAP Stream Done");
-      },
-      onError: (error) {
-        print("IAP Stream Error: $error");
-      },
+      onDone: () {},
+      onError: (error) {},
     );
 
     // Query Products
@@ -99,7 +94,7 @@ class SubscriptionProvider with ChangeNotifier {
       _kIds,
     );
     if (response.notFoundIDs.isNotEmpty) {
-      print("Product IDs not found: ${response.notFoundIDs}");
+      // Handle missing IDs if necessary
     }
     _products = response.productDetails;
 
@@ -117,7 +112,7 @@ class SubscriptionProvider with ChangeNotifier {
         // UI can show pending state
       } else {
         if (purchaseDetails.status == PurchaseStatus.error) {
-          print("IAP Error: ${purchaseDetails.error}");
+          // Handle error
         } else if (purchaseDetails.status == PurchaseStatus.purchased ||
             purchaseDetails.status == PurchaseStatus.restored) {
           _grantPremium();
@@ -131,7 +126,6 @@ class SubscriptionProvider with ChangeNotifier {
   }
 
   void _grantPremium() {
-    print("Granting Premium Access");
     _isPremium = true;
     notifyListeners();
   }

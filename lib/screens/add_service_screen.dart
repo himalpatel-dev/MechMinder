@@ -556,6 +556,9 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
+        systemOverlayStyle: isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
         title: Text(
           _isEditMode ? 'Edit Service' : 'Add Service Record',
           style: const TextStyle(fontWeight: FontWeight.bold),

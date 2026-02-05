@@ -204,6 +204,9 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
     return Scaffold(
       backgroundColor: isDark ? Colors.black : Colors.white,
       appBar: AppBar(
+        systemOverlayStyle: isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
         title: Text(
           _isEditMode ? 'Edit Vehicle' : 'Add New Vehicle',
           style: const TextStyle(fontWeight: FontWeight.bold),

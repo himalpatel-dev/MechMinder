@@ -228,6 +228,9 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
     return Scaffold(
       backgroundColor: isDark ? const Color(0xFF121212) : Colors.grey.shade50,
       appBar: AppBar(
+        systemOverlayStyle: isDark
+            ? SystemUiOverlayStyle.light
+            : SystemUiOverlayStyle.dark,
         title: Text(
           'Manage Auto Parts',
           style: TextStyle(

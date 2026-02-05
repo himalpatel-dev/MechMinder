@@ -1,0 +1,41 @@
+1. Introduction
+Welcome to MechMinder, a vehicle maintenance and management application developed by Krimal Techworks. We are committed to protecting your privacy. This Privacy Policy explains how MechMinder handles information.
+
+Crucially, MechMinder is an offline-first application. We do not collect, store, or process your personal data on our servers.
+
+2. Information We Collect (Stored Locally Only)
+All information you enter into MechMinder is stored locally on your device in a secure database. We do not have access to this data. The types of information you may store in the app include:
+
+Vehicle Information: Make, model, registration number, fuel type, and owner name.
+Maintenance Records: Service history, odometer readings, service costs, and notes.
+Financial Data: Fuel expenses and other vehicle-related costs.
+Reminders: Maintenance schedules and due dates.
+Documents & Photos: Images of your vehicle, service receipts, and vehicle papers (such as Insurance or PUC documents).
+Vendor Information: Names and contact details of your mechanics or service centers.
+3. How We Use Your Information
+Since all data is stored locally, it is used solely to provide the app's features to you, such as:
+
+Tracking your vehicle's service history and expenses.
+Calculating total spending on your vehicle.
+Sending you local notifications for upcoming service reminders.
+Allowing you to export your data to Excel files.
+4. Permissions We Request
+To provide its full functionality, MechMinder may request the following permissions:
+
+Camera: To allow you to take photos of your vehicle, receipts, or documents.
+Storage/Media: To allow you to pick existing photos/documents from your gallery and to save exported Excel reports to your device.
+Notifications: To send you alerts for maintenance tasks and document expiry dates.
+Internet: Used only for basic technical requirements (like checking for app updates) or if you choose to manually share a report via third-party apps.
+5. Data Security and Storage
+Your data is stored in an SQLite database on your device. We do not use cloud storage or sync services.
+
+Data Retention: Data remains on your device until you delete the app or clear the app's data.
+User Control: You have full control over your data. You can add, edit, or delete any record at any time.
+6. Third-Party Services
+MechMinder does not share your data with any third parties. If you use the "Share" feature within the app, you are manually choosing to send specific data to another application (like WhatsApp or Email) of your choice.
+
+7. Children’s Privacy
+MechMinder does not collect any personal information from anyone, including children under the age of 13.
+
+8. Changes to This Policy
+We may update our Privacy Policy from time to time. Any changes will be posted on this page with an updated "Last Updated" date.

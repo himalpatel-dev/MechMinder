@@ -53,6 +53,12 @@ class OnboardingScreen extends StatelessWidget {
 
     return IntroductionScreen(
       globalBackgroundColor: backgroundColor,
+      safeAreaList: const [
+        false,
+        false,
+        false,
+        true,
+      ], // Only safe area at the bottom
       allowImplicitScrolling: true,
 
       // autoScrollDuration: 5000, // Removed auto-scroll

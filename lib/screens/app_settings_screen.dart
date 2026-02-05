@@ -486,13 +486,72 @@ class AppSettingsScreen extends StatelessWidget {
     );
   }
 
+  void _showPrivacyPolicyDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Privacy Policy'),
+        scrollable:
+            true, // IMPORTANT: Allows the whole dialog content to scroll
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Text(
+              '1. Introduction\n'
+              'Welcome to MechMinder, a vehicle maintenance and management application developed by Krimal Techworks. We are committed to protecting your privacy. This Privacy Policy explains how MechMinder handles information.\n\n'
+              'Crucially, MechMinder is an offline-first application. We do not collect, store, or process your personal data on our servers.\n\n'
+              '2. Information We Collect (Stored Locally Only)\n'
+              'All information you enter into MechMinder is stored locally on your device in a secure database. We do not have access to this data. The types of information you may store in the app include:\n\n'
+              'Vehicle Information: Make, model, registration number, fuel type, and owner name.\n'
+              'Maintenance Records: Service history, odometer readings, service costs, and notes.\n'
+              'Financial Data: Fuel expenses and other vehicle-related costs.\n'
+              'Reminders: Maintenance schedules and due dates.\n'
+              'Documents & Photos: Images of your vehicle, service receipts, and vehicle papers (such as Insurance or PUC documents).\n'
+              'Vendor Information: Names and contact details of your mechanics or service centers.\n\n'
+              '3. How We Use Your Information\n'
+              'Since all data is stored locally, it is used solely to provide the app\'s features to you, such as:\n\n'
+              'Tracking your vehicle\'s service history and expenses.\n'
+              'Calculating total spending on your vehicle.\n'
+              'Sending you local notifications for upcoming service reminders.\n'
+              'Allowing you to export your data to Excel files.\n\n'
+              '4. Permissions We Request\n'
+              'To provide its full functionality, MechMinder may request the following permissions:\n\n'
+              'Camera: To allow you to take photos of your vehicle, receipts, or documents.\n'
+              'Storage/Media: To allow you to pick existing photos/documents from your gallery and to save exported Excel reports to your device.\n'
+              'Notifications: To send you alerts for maintenance tasks and document expiry dates.\n'
+              'Internet: Used only for basic technical requirements (like checking for app updates) or if you choose to manually share a report via third-party apps.\n\n'
+              '5. Data Security and Storage\n'
+              'Your data is stored in an SQLite database on your device. We do not use cloud storage or sync services.\n\n'
+              'Data Retention: Data remains on your device until you delete the app or clear the app\'s data.\n'
+              'User Control: You have full control over your data. You can add, edit, or delete any record at any time.\n\n'
+              '6. Third-Party Services\n'
+              'MechMinder does not share your data with any third parties. If you use the "Share" feature within the app, you are manually choosing to send specific data to another application (like WhatsApp or Email) of your choice.\n\n'
+              '7. Children’s Privacy\n'
+              'MechMinder does not collect any personal information from anyone, including children under the age of 13.\n\n'
+              '8. Changes to This Policy\n'
+              'We may update our Privacy Policy from time to time. Any changes will be posted on this page with an updated "Last Updated" date.',
+              style: TextStyle(fontSize: 14),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   // --- UPDATED BUILD METHOD ---
   @override
   Widget build(BuildContext context) {
     return Consumer2<SettingsProvider, SubscriptionProvider>(
       builder: (context, settings, subProvider, child) {
         return ListView(
-          padding: const EdgeInsets.only(bottom: 60),
+          padding: const EdgeInsets.only(bottom: 130),
           children: [
             // --- DATA MANAGEMENT (unchanged) ---
             const ListTile(
@@ -624,6 +683,17 @@ class AppSettingsScreen extends StatelessWidget {
               onTap: () {
                 // Trigger the home screen tutorial
                 onShowTour();
+              },
+            ),
+            ListTile(
+              leading: Icon(
+                Icons.privacy_tip_outlined,
+                color: settings.primaryColor,
+              ),
+              title: const Text('Privacy Policy'),
+              subtitle: const Text('Data usage and protection'),
+              onTap: () {
+                _showPrivacyPolicyDialog(context);
               },
             ),
           ],
