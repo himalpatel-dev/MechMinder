@@ -11,7 +11,7 @@ import '../service/settings_provider.dart'; // Make sure this path is correct
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../screens/vehicle_list.dart';
 import '../screens/todo_list_screen.dart';
-import '../screens/onboarding_screen.dart'; // Add this import
+
 import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
 import '../service/subscription_provider.dart';
@@ -20,10 +20,13 @@ import '../screens/paywall_screen.dart';
 class AppSettingsScreen extends StatelessWidget {
   final GlobalKey<VehicleListScreenState> vehicleListKey;
   final GlobalKey<TodoListScreenState> allRemindersKey;
+  final VoidCallback onShowTour; // NEW: Callback for tutorial
+
   const AppSettingsScreen({
     super.key,
     required this.vehicleListKey,
     required this.allRemindersKey,
+    required this.onShowTour, // NEW: Required
   });
 
   // --- (Your _exportDataAsJson and _importDataFromJson functions are unchanged) ---
@@ -619,13 +622,8 @@ class AppSettingsScreen extends StatelessWidget {
               title: const Text('App Tour'),
               subtitle: const Text('See what MechMinder can do'),
               onTap: () {
-                // Navigate to Onboarding with flag isFromSettings = true
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (context) =>
-                        const OnboardingScreen(isFromSettings: true),
-                  ),
-                );
+                // Trigger the home screen tutorial
+                onShowTour();
               },
             ),
           ],

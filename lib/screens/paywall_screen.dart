@@ -282,7 +282,7 @@ class PaywallScreen extends StatelessWidget {
           ),
           ElevatedButton(
             onPressed: () async {
-              if (codeController.text == "FAMILY") {
+              if (codeController.text == "kismisH") {
                 await subProvider.activateSecretOverride();
                 if (ctx.mounted) {
                   Navigator.of(ctx).pop(); // Close dialog

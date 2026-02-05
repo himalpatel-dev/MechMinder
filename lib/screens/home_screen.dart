@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart'; // Import SharedPrefs
+import 'package:tutorial_coach_mark/tutorial_coach_mark.dart'; // Import TutorialCoachMark
 import '../service/settings_provider.dart';
 import 'vehicle_list.dart';
 import 'todo_list_screen.dart';
@@ -12,7 +14,9 @@ import '../service/notification_service.dart';
 class BottomNavItem {
   final IconData icon;
   final String title;
-  BottomNavItem({required this.icon, required this.title});
+  final GlobalKey key; // Add GlobalKey here
+
+  BottomNavItem({required this.icon, required this.title, required this.key});
 }
 // --- END NEW ---
 
@@ -32,18 +36,34 @@ class _HomeScreenState extends State<HomeScreen>
   final GlobalKey<VehicleListScreenState> _vehicleListKey = GlobalKey();
   final GlobalKey<TodoListScreenState> _todoListKey = GlobalKey();
 
-  // --- NEW: Define the items for the bottom bar ---
-  final List<BottomNavItem> _navItems = [
-    BottomNavItem(icon: Icons.directions_car, title: 'Vehicles'),
-    BottomNavItem(icon: Icons.checklist, title: 'To-Do'),
-    BottomNavItem(icon: Icons.apps, title: 'Master'),
-    BottomNavItem(icon: Icons.settings, title: 'Settings'),
-  ];
-  // --- END NEW ---
+  // TutorialCoachMark variables
+  TutorialCoachMark? tutorialCoachMark;
+  List<TargetFocus> targets = [];
+
+  // Define keys for Bottom Nav Items
+  final GlobalKey _keyVehicles = GlobalKey();
+  final GlobalKey _keyTodo = GlobalKey();
+  final GlobalKey _keyMaster = GlobalKey();
+  final GlobalKey _keySettings = GlobalKey();
+
+  late final List<BottomNavItem> _navItems;
 
   @override
   void initState() {
     super.initState();
+
+    // Initialize nav items with keys
+    _navItems = [
+      BottomNavItem(
+        icon: Icons.directions_car,
+        title: 'Vehicles',
+        key: _keyVehicles,
+      ),
+      BottomNavItem(icon: Icons.checklist, title: 'To-Do', key: _keyTodo),
+      BottomNavItem(icon: Icons.apps, title: 'Master', key: _keyMaster),
+      BottomNavItem(icon: Icons.settings, title: 'Settings', key: _keySettings),
+    ];
+
     _tabController = TabController(length: _navItems.length, vsync: this);
     // Listener to update the Floating Action Button
     _tabController.addListener(() {
@@ -55,7 +75,194 @@ class _HomeScreenState extends State<HomeScreen>
     // --- RE-CHECK PERMISSIONS ON HOME SCREEN LOAD ---
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       await NotificationService().requestPermissions();
+      _checkAndShowTutorial(); // Check tutorial status
     });
+  }
+
+  // Check if user has seen the "Home Help" tutorial
+  Future<void> _checkAndShowTutorial() async {
+    final prefs = await SharedPreferences.getInstance();
+    final bool hasSeenHelp = prefs.getBool('hasSeenHomeHelp') ?? false;
+
+    if (!hasSeenHelp) {
+      // Delay slightly to ensure UI is ready
+      Future.delayed(const Duration(milliseconds: 500), () {
+        _showTutorial();
+      });
+    }
+  }
+
+  void _showTutorial() {
+    _initTargets();
+    tutorialCoachMark = TutorialCoachMark(
+      targets: targets,
+      colorShadow: Colors.black, // Shadow color
+      textSkip: "SKIP",
+      paddingFocus: 10,
+      opacityShadow: 0.8,
+      onFinish: () {
+        _markTutorialSeen();
+      },
+      onClickTarget: (target) {
+        // Optional: Do something when target clicked
+      },
+      onClickOverlay: (target) {
+        // Optional: Do something when overlay clicked
+      },
+      onSkip: () {
+        _markTutorialSeen();
+        return true;
+      },
+    )..show(context: context);
+  }
+
+  Future<void> _markTutorialSeen() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hasSeenHomeHelp', true);
+  }
+
+  void _initTargets() {
+    targets.clear();
+
+    // 1. Vehicles Tab
+    targets.add(
+      TargetFocus(
+        identify: "vehicles",
+        keyTarget: _keyVehicles,
+        alignSkip: Alignment.topRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.top,
+            builder: (context, controller) {
+              return _buildTutorialContent(
+                title: "Vehicles Tab",
+                description:
+                    "With this tab, you can manage your vehicles. Add new cars or bikes, view details, and track their expenses.",
+              );
+            },
+          ),
+        ],
+        shape: ShapeLightFocus.RRect,
+        radius: 30,
+      ),
+    );
+
+    // 2. To-Do Tab
+    targets.add(
+      TargetFocus(
+        identify: "todo",
+        keyTarget: _keyTodo,
+        alignSkip: Alignment.topRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.top,
+            builder: (context, controller) {
+              return _buildTutorialContent(
+                title: "To-Do / Tasks",
+                description:
+                    "Use this section to create a list of tasks you want to complete in the next service. It helps you remember upcoming work, track planned activities, and prepare in advance for the next service.",
+              );
+            },
+          ),
+        ],
+        shape: ShapeLightFocus.RRect,
+        radius: 30,
+      ),
+    );
+
+    // 3. Master Tab
+    targets.add(
+      TargetFocus(
+        identify: "master",
+        keyTarget: _keyMaster,
+        alignSkip: Alignment.topRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.top,
+            builder: (context, controller) {
+              return _buildTutorialContent(
+                title: "Master Data",
+                description:
+                    "This section is primarily used to create and manage service templates by adding service parts along with their time and distance intervals. When these templates are applied to your vehicle services, the app automatically tracks them and sends notifications when a service is due. You can also manage service vendors and organize your documents into categories.",
+              );
+            },
+          ),
+        ],
+        shape: ShapeLightFocus.RRect,
+        radius: 30,
+      ),
+    );
+
+    // 4. Settings Tab
+    targets.add(
+      TargetFocus(
+        identify: "settings",
+        keyTarget: _keySettings,
+        alignSkip: Alignment.topRight,
+        contents: [
+          TargetContent(
+            align: ContentAlign.top,
+            builder: (context, controller) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildTutorialContent(
+                    title: "Settings",
+                    description:
+                        "Configure app preferences, change themes, primary colors, and manage your subscription.",
+                  ),
+                  const SizedBox(height: 20),
+                  // "Done and Complete" button for the last step
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        controller.next(); // Or finish()
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.black,
+                      ),
+                      child: const Text("Done"),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ],
+        shape: ShapeLightFocus.RRect,
+        radius: 30,
+      ),
+    );
+  }
+
+  Widget _buildTutorialContent({
+    required String title,
+    required String description,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            fontSize: 20.0,
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.only(top: 10.0),
+          child: Text(
+            description,
+            style: const TextStyle(color: Colors.white, fontSize: 16.0),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
@@ -74,6 +281,8 @@ class _HomeScreenState extends State<HomeScreen>
     final Color primaryColor = settings.primaryColor;
 
     return GestureDetector(
+      // Assign the GlobalKey to the GestureDetector or the Container
+      key: _navItems[index].key,
       onTap: () {
         // Change the view and the tab controller index
         _tabController.animateTo(index);
@@ -172,6 +381,7 @@ class _HomeScreenState extends State<HomeScreen>
             AppSettingsScreen(
               vehicleListKey: _vehicleListKey,
               allRemindersKey: _todoListKey,
+              onShowTour: _showTutorial, // Pass the tutorial method
             ),
           ],
         ),
