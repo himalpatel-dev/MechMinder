@@ -9,6 +9,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="com.android.vending.BILLING" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
     <application
         android:label="MechMinder"
@@ -41,7 +42,7 @@
             android:exported="true"
             android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
                 <intent-filter>
-                    <action android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+                    <action android:name="android.intent.action.BOOT_COMPLETED"/>
                     <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
                     <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
                 </intent-filter>

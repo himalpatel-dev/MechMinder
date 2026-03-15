@@ -25,7 +25,7 @@ class NotificationService {
   Future<void> initialize() async {
     // 1. Setup Android Settings
     const AndroidInitializationSettings androidSettings =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('launcher_icon');
 
     // 2. Setup iOS Settings
     const DarwinInitializationSettings iosSettings =
@@ -41,20 +41,26 @@ class NotificationService {
       iOS: iosSettings,
     );
 
-    await _notificationsPlugin.initialize(
-      settings,
-      onDidReceiveNotificationResponse: _onDidReceiveNotificationResponse,
-    );
+    try {
+      await _notificationsPlugin.initialize(
+        settings,
+        onDidReceiveNotificationResponse: _onDidReceiveNotificationResponse,
+      );
 
-    // --- THIS IS THE NEW, IMPORTANT PART ---
-    // 4. Create the Android Notification Channel
-    // This tells Android "this channel is important"
-    await _notificationsPlugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >()
-        ?.createNotificationChannel(channel);
-    // --- END ---
+      // --- THIS IS THE NEW, IMPORTANT PART ---
+      // 4. Create the Android Notification Channel
+      // This tells Android "this channel is important"
+      await _notificationsPlugin
+          .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin
+          >()
+          ?.createNotificationChannel(channel);
+      // --- END ---
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error initializing notifications: $e");
+      }
+    }
   }
 
   // 5. Request Permissions (This is simpler now)
