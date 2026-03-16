@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import '../service/database_helper.dart'; // Make sure this path is correct
+import '../service/notification_service.dart'; // Add this line
 import '../widgets/full_screen_photo_viewer.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart'; // Make sure this path is correct
@@ -492,6 +493,17 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       }
 
       if (mounted) {
+        // --- TRIGGER REAL-TIME NOTIFICATIONS ---
+        // Helpful if this service update pushes other unrelated reminders into "overdue" status
+        final int currentOdo = int.tryParse(_odometerController.text) ?? 0;
+        final settings = Provider.of<SettingsProvider>(context, listen: false);
+
+        await NotificationService().checkAndShowOdometerReminders(
+          vehicleId: widget.vehicleId,
+          currentOdometer: currentOdo,
+          unitType: settings.unitType,
+        );
+
         Navigator.of(context).pop();
       }
     }

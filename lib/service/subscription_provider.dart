@@ -9,7 +9,7 @@ class SubscriptionProvider with ChangeNotifier {
   static const int _trialDurationDays = 15;
 
   // REPLACE THIS with your actual Product ID from Google Play Console
-  static const String _productID = 'lifetime_subscription_79';
+  static const String _productID = 'lifetime_subscription_199';
 
   final InAppPurchase _iap = InAppPurchase.instance;
   bool _available = true;
@@ -89,9 +89,9 @@ class SubscriptionProvider with ChangeNotifier {
     );
 
     // Query Products
-    const Set<String> _kIds = {_productID};
+    const Set<String> kIds = {_productID};
     final ProductDetailsResponse response = await _iap.queryProductDetails(
-      _kIds,
+      kIds,
     );
     if (response.notFoundIDs.isNotEmpty) {
       // Handle missing IDs if necessary

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -145,49 +146,37 @@ class OverviewTabState extends State<OverviewTab> {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
 
-    // 1. Save the new odometer (unchanged)
-    await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
+    try {
+      // 1. Save the new odometer
+      await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
 
-    scaffoldMessenger.showSnackBar(
-      const SnackBar(
-        content: Text('Odometer updated!'),
-        backgroundColor: Colors.green,
-      ),
-    );
-    if (mounted) {
-      FocusScope.of(context).unfocus();
-    }
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(
+          content: Text('Odometer updated!'),
+          backgroundColor: Colors.green,
+          duration: Duration(seconds: 2),
+        ),
+      );
+      if (mounted) {
+        FocusScope.of(context).unfocus();
+      }
 
-    // --- THIS IS THE FIX ---
-    // 2. Get all *pending* reminders
-    final allReminders = await dbHelper.queryRemindersForVehicle(
-      widget.vehicleId,
-    );
-
-    for (var reminder in allReminders) {
-      final dueOdometer = reminder[DatabaseHelper.columnDueOdometer];
-
-      // 3. If this reminder is now due...
-      if (dueOdometer != null && newOdometer >= dueOdometer) {
-        final int reminderId = reminder[DatabaseHelper.columnId];
-        final String templateName =
-            reminder['template_name'] ??
-            reminder[DatabaseHelper.columnNotes] ??
-            'Service';
-        print("  > Odometer due for '$templateName'! Sending notification.");
-
-        // 4. Send notification
-        await NotificationService().showImmediateReminder(
-          id: reminderId,
-          title: 'Vehicle Service Due',
-          body:
-              'Your "$templateName" service is due! (Reached $dueOdometer km).',
-        );
+      // --- TRIGGER REAL-TIME NOTIFICATIONS ---
+      await NotificationService().checkAndShowOdometerReminders(
+        vehicleId: widget.vehicleId,
+        currentOdometer: newOdometer,
+        unitType: Provider.of<SettingsProvider>(
+          context,
+          listen: false,
+        ).unitType,
+      );
+    } catch (e) {
+      if (kDebugMode) {
+        print("Error saving odometer or triggering notification: $e");
       }
     }
-    // --- END OF FIX ---
 
-    // 6. Reload all data
+    // 6. Reload all data to refresh the UI lists
     loadData();
   }
 

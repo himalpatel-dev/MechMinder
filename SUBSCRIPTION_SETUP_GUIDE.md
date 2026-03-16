@@ -35,10 +35,10 @@ The code will not work until you tell Google about your product.
 1.  Go to your app in the Console.
 2.  Navigate to **Monetize** > **Products** > **In-app products**.
 3.  Click **Create product**.
-4.  **Product ID**: `lifetime_subscription_79` (Copy this EXACTLY).
+4.  **Product ID**: `lifetime_subscription_199` (Copy this EXACTLY).
 5.  **Name**: "Lifetime Premium".
 6.  **Description**: "Unlock lifetime access to cloud backups and all features."
-7.  **Price**: Click "Set Price" -> Enter **79 INR** -> Apply.
+7.  **Price**: Click "Set Price" -> Enter **199 INR** -> Apply.
 8.  **Status**: Click **Save** and then **Activate**.
 
 ---
@@ -90,7 +90,7 @@ To test buying without using real money:
 **Q: Why does it say "Product not found"?**
 A: This happens if:
 1.  You didn't upload the build to the Play Console yet.
-2.  The Product ID in Console doesn't match `lifetime_subscription_79`.
+2.  The Product ID in Console doesn't match `lifetime_subscription_199`.
 3.   The product is "Inactive" in the Console.
 4.  You are running a debug build (`flutter run`) that isn't signed with the same key as the Console.
 

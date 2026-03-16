@@ -6,6 +6,7 @@ import '../service/database_helper.dart'; // Make sure this path is correct
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart'; // Make sure this path is correct
 import '../widgets/full_screen_photo_viewer.dart'; // <-- ADDED
+import '../service/notification_service.dart'; // Add this line
 
 class AddVehicleScreen extends StatefulWidget {
   final int? vehicleId;
@@ -157,6 +158,17 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       // --- END PHOTO SAVE LOGIC ---
 
       if (mounted) {
+        // --- TRIGGER REAL-TIME NOTIFICATIONS ---
+        // We only trigger if the odometer actually changed or is in edit mode
+        final int currentOdo = int.tryParse(_odometerController.text) ?? 0;
+        final settings = Provider.of<SettingsProvider>(context, listen: false);
+
+        await NotificationService().checkAndShowOdometerReminders(
+          vehicleId: vehicleId,
+          currentOdometer: currentOdo,
+          unitType: settings.unitType,
+        );
+
         Navigator.of(context).pop();
       }
     }

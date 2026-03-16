@@ -15,7 +15,7 @@ class PaywallScreen extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     // Fallback price if product not loaded (e.g. testing)
-    String priceText = "₹79";
+    String priceText = "₹199";
     if (subProvider.products.isNotEmpty) {
       priceText = subProvider.products.first.price;
     }
