@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path_provider/path_provider.dart';
+import 'file_storage.dart';
 
 class DatabaseHelper {
   static const _databaseName = "VehicleManager.db";
@@ -671,9 +672,11 @@ class DatabaseHelper {
       expenseArgs.addAll([startDate, endDate]);
     }
 
-    // 1. Get spending from Expenses, grouped by category
+    // 1. Get spending from Expenses, grouped by category.
+    // COALESCE: SUM() is NULL when every cost in a group is empty, and the
+    // charts expect a number.
     final categoryResult = await db.rawQuery(
-      'SELECT $columnCategory, SUM($columnTotalCost) as total FROM $tableExpenses WHERE $expenseWhere GROUP BY $columnCategory',
+      'SELECT $columnCategory, COALESCE(SUM($columnTotalCost), 0) as total FROM $tableExpenses WHERE $expenseWhere GROUP BY $columnCategory',
       expenseArgs,
     );
 
@@ -700,7 +703,7 @@ class DatabaseHelper {
     }
 
     final paperResult = await db.rawQuery(
-      'SELECT $columnPaperType, SUM($columnCost) as total FROM $tableVehiclePapers WHERE $paperWhere GROUP BY $columnPaperType',
+      'SELECT $columnPaperType, COALESCE(SUM($columnCost), 0) as total FROM $tableVehiclePapers WHERE $paperWhere GROUP BY $columnPaperType',
       paperArgs,
     );
     // Add papers to results, treating paper type as category
@@ -718,7 +721,8 @@ class DatabaseHelper {
       });
     }
 
-    return results;
+    // Zero-cost groups add nothing to the chart and would draw empty slices.
+    return results.where((r) => ((r['total'] as num?) ?? 0) > 0).toList();
   }
 
   // Deletes a reminder by its ID
@@ -791,14 +795,451 @@ class DatabaseHelper {
   }
 
   // Deletes a vehicle by its ID.
-  // Thanks to "ON DELETE CASCADE" in our database, this will
-  // ALSO delete all associated services, items, reminders, expenses, and photos.
+  // "ON DELETE CASCADE" removes its services, items, reminders, expenses,
+  // papers, documents and to-dos. The photos table has no foreign key, so its
+  // rows (vehicle photos and service bill photos) are removed here explicitly;
+  // leftover photo rows used to make every later backup impossible to restore.
   Future<int> deleteVehicle(int id) async {
     Database db = await instance.database;
-    return await db.delete(
-      tableVehicles,
-      where: '$columnId = ?',
-      whereArgs: [id],
+    final List<String> filePaths = [];
+
+    final count = await db.transaction((txn) async {
+      const photoWhere =
+          "($columnParentType = 'vehicle' AND $columnParentId = ?) OR "
+          "($columnParentType = 'service' AND $columnParentId IN "
+          "(SELECT $columnId FROM $tableServices WHERE $columnVehicleId = ?))";
+
+      final photos = await txn.query(
+        tablePhotos,
+        columns: [columnUri],
+        where: photoWhere,
+        whereArgs: [id, id],
+      );
+      filePaths.addAll(photos.map((r) => r[columnUri] as String? ?? ''));
+
+      final papers = await txn.query(
+        tableVehiclePapers,
+        columns: [columnFilePath],
+        where: '$columnVehicleId = ?',
+        whereArgs: [id],
+      );
+      filePaths.addAll(papers.map((r) => r[columnFilePath] as String? ?? ''));
+
+      final documents = await txn.query(
+        tableDocuments,
+        columns: [columnFilePath],
+        where: '$columnVehicleId = ?',
+        whereArgs: [id],
+      );
+      filePaths.addAll(
+        documents.map((r) => r[columnFilePath] as String? ?? ''),
+      );
+
+      await txn.delete(tablePhotos, where: photoWhere, whereArgs: [id, id]);
+      return txn.delete(tableVehicles, where: '$columnId = ?', whereArgs: [id]);
+    });
+
+    await _deleteFilesIfUnreferenced(filePaths);
+    return count;
+  }
+
+  /// Deletes files from app storage unless another photo, paper or document
+  /// row still points at them. (Older versions could give two papers the same
+  /// file, so a path is checked before its file is removed.)
+  Future<void> _deleteFilesIfUnreferenced(Iterable<String> paths) async {
+    final unique = paths.where((p) => p.isNotEmpty).toSet();
+    if (unique.isEmpty) return;
+    final db = await instance.database;
+    final toDelete = <String>[];
+    for (final path in unique) {
+      final refs = await db.rawQuery(
+        '''
+        SELECT 1 FROM $tablePhotos WHERE $columnUri = ?
+        UNION ALL SELECT 1 FROM $tableVehiclePapers WHERE $columnFilePath = ?
+        UNION ALL SELECT 1 FROM $tableDocuments WHERE $columnFilePath = ?
+        LIMIT 1
+        ''',
+        [path, path, path],
+      );
+      if (refs.isEmpty) toDelete.add(path);
+    }
+    await FileStorage.deleteOwnedFiles(toDelete);
+  }
+
+  /// Removes photo rows whose vehicle or service no longer exists (left
+  /// behind by older versions when a vehicle was deleted), and their files.
+  Future<void> deleteOrphanPhotos() async {
+    final db = await instance.database;
+    const orphanWhere =
+        "($columnParentType = 'vehicle' AND $columnParentId NOT IN (SELECT $columnId FROM $tableVehicles)) OR "
+        "($columnParentType = 'service' AND $columnParentId NOT IN (SELECT $columnId FROM $tableServices))";
+    final rows = await db.query(
+      tablePhotos,
+      columns: [columnUri],
+      where: orphanWhere,
+    );
+    if (rows.isEmpty) return;
+    await db.delete(tablePhotos, where: orphanWhere);
+    await _deleteFilesIfUnreferenced(
+      rows.map((r) => r[columnUri] as String? ?? ''),
+    );
+  }
+
+  /// Older versions saved the image picker's cache path, which Android can
+  /// clear. Copies every photo that still exists outside app storage into
+  /// app storage and updates its row. Safe to run on every launch.
+  Future<void> moveExternalPhotosToAppStorage() async {
+    final db = await instance.database;
+    final rows = await db.query(tablePhotos, columns: [columnId, columnUri]);
+    for (final row in rows) {
+      final uri = row[columnUri] as String?;
+      if (uri == null || uri.isEmpty) continue;
+      if (await FileStorage.isOwned(uri)) continue;
+      if (!await File(uri).exists()) continue;
+      try {
+        final newPath = await FileStorage.importFile(
+          uri,
+          FileStorage.photosFolder,
+        );
+        await db.update(
+          tablePhotos,
+          {columnUri: newPath},
+          where: '$columnId = ?',
+          whereArgs: [row[columnId]],
+        );
+      } catch (e) {
+        print('Could not move photo $uri: $e');
+      }
+    }
+  }
+
+  /// Template ids used by a service's parts.
+  Future<Set<int>> _templateIdsForService(
+    DatabaseExecutor exec,
+    int serviceId,
+  ) async {
+    final rows = await exec.query(
+      tableServiceItems,
+      columns: [columnTemplateId],
+      where: '$columnServiceId = ? AND $columnTemplateId IS NOT NULL',
+      whereArgs: [serviceId],
+    );
+    return rows.map((r) => r[columnTemplateId] as int).toSet();
+  }
+
+  /// Recomputes which reminders for one part (template) on one vehicle are
+  /// pending or completed, from the service history:
+  ///
+  /// * A reminder created by service S is completed by the next service
+  ///   (by date, then id) that also includes this part, or pending if there
+  ///   is none. So editing an old service never overrides the newest
+  ///   reminder, and deleting the newest service brings the previous
+  ///   reminder back.
+  /// * A reminder not created by a service keeps its completion only while
+  ///   the completing service still includes the part.
+  Future<void> _recomputeTemplateChain(
+    DatabaseExecutor exec,
+    int vehicleId,
+    int templateId,
+  ) async {
+    final services = await exec.rawQuery(
+      '''
+      SELECT DISTINCT s.$columnId AS id, s.$columnServiceDate AS d
+      FROM $tableServices s
+      JOIN $tableServiceItems si ON si.$columnServiceId = s.$columnId
+      WHERE s.$columnVehicleId = ? AND si.$columnTemplateId = ?
+      ORDER BY s.$columnServiceDate ASC, s.$columnId ASC
+      ''',
+      [vehicleId, templateId],
+    );
+    final order = services.map((r) => r['id'] as int).toList();
+
+    final reminders = await exec.query(
+      tableReminders,
+      where: '$columnVehicleId = ? AND $columnTemplateId = ?',
+      whereArgs: [vehicleId, templateId],
+    );
+
+    for (final r in reminders) {
+      final int? source = r[columnServiceId] as int?;
+      final int? currentBy = r[columnCompletedByServiceId] as int?;
+      int? completedBy;
+
+      if (source != null) {
+        final index = order.indexOf(source);
+        // Source service no longer has this part: leave legacy rows alone.
+        if (index == -1) continue;
+        completedBy = index + 1 < order.length ? order[index + 1] : null;
+      } else {
+        completedBy = (currentBy != null && order.contains(currentBy))
+            ? currentBy
+            : null;
+      }
+
+      final newStatus = completedBy == null ? 'pending' : 'completed';
+      if (newStatus != r[columnStatus] || completedBy != currentBy) {
+        await exec.update(
+          tableReminders,
+          {columnStatus: newStatus, columnCompletedByServiceId: completedBy},
+          where: '$columnId = ?',
+          whereArgs: [r[columnId]],
+        );
+      }
+    }
+  }
+
+  /// "2026-01-31" + 30 days, computed on calendar dates so daylight-saving
+  /// changes can't shift the result by a day.
+  static String _addDays(String isoDate, int days) {
+    final d = DateTime.parse(isoDate);
+    final result = DateTime(d.year, d.month, d.day + days);
+    return result.toIso8601String().split('T')[0];
+  }
+
+  /// Saves a service, its parts, its reminders and new photos in one
+  /// transaction: either everything is written or nothing is.
+  ///
+  /// [serviceRow] holds the service columns (without the id). [items] hold
+  /// service_items columns (without id/service id). [newPhotoPaths] must
+  /// already be in app storage. Returns the service id.
+  Future<int> saveServiceWithItems({
+    int? serviceId,
+    required Map<String, dynamic> serviceRow,
+    required List<Map<String, dynamic>> items,
+    required List<String> newPhotoPaths,
+  }) async {
+    final db = await instance.database;
+    return db.transaction((txn) async {
+      final int vehicleId = serviceRow[columnVehicleId] as int;
+      int id;
+      Set<int> oldTemplateIds = {};
+
+      if (serviceId == null) {
+        id = await txn.insert(tableServices, serviceRow);
+      } else {
+        id = serviceId;
+        oldTemplateIds = await _templateIdsForService(txn, id);
+        await txn.update(
+          tableServices,
+          serviceRow,
+          where: '$columnId = ?',
+          whereArgs: [id],
+        );
+      }
+
+      // Reminders this service created are rebuilt below.
+      await txn.delete(
+        tableReminders,
+        where: '$columnServiceId = ?',
+        whereArgs: [id],
+      );
+
+      await txn.delete(
+        tableServiceItems,
+        where: '$columnServiceId = ?',
+        whereArgs: [id],
+      );
+      final Set<int> newTemplateIds = {};
+      for (final item in items) {
+        await txn.insert(tableServiceItems, {...item, columnServiceId: id});
+        final templateId = item[columnTemplateId] as int?;
+        if (templateId != null) newTemplateIds.add(templateId);
+      }
+
+      // Raise the vehicle's odometer if this service shows a higher reading.
+      final int? odometer = serviceRow[columnOdometer] as int?;
+      if (odometer != null) {
+        await txn.rawUpdate(
+          '''
+          UPDATE $tableVehicles
+          SET $columnCurrentOdometer = ?, $columnOdometerUpdatedAt = ?
+          WHERE $columnId = ? AND ($columnCurrentOdometer IS NULL OR $columnCurrentOdometer < ?)
+          ''',
+          [odometer, DateTime.now().toIso8601String(), vehicleId, odometer],
+        );
+      }
+
+      final String serviceDate = serviceRow[columnServiceDate] as String;
+      for (final templateId in newTemplateIds) {
+        final template = await txn.query(
+          tableServiceTemplates,
+          where: '$columnId = ?',
+          whereArgs: [templateId],
+          limit: 1,
+        );
+        if (template.isNotEmpty) {
+          final int? intervalDays = template.first[columnIntervalDays] as int?;
+          final int? intervalKm = template.first[columnIntervalKm] as int?;
+          // 0 means "no interval" on the Auto Parts screen, so only > 0
+          // creates a due date or due odometer.
+          final String? nextDueDate = (intervalDays != null && intervalDays > 0)
+              ? _addDays(serviceDate, intervalDays)
+              : null;
+          final int? nextDueOdometer =
+              (intervalKm != null && intervalKm > 0 && odometer != null)
+              ? odometer + intervalKm
+              : null;
+          if (nextDueDate != null || nextDueOdometer != null) {
+            await txn.insert(tableReminders, {
+              columnVehicleId: vehicleId,
+              columnServiceId: id,
+              columnTemplateId: templateId,
+              columnDueDate: nextDueDate,
+              columnDueOdometer: nextDueOdometer,
+              columnStatus: 'pending',
+            });
+          }
+        }
+
+        // Reminders not created by a service are completed by this one.
+        await txn.update(
+          tableReminders,
+          {columnStatus: 'completed', columnCompletedByServiceId: id},
+          where:
+              '$columnVehicleId = ? AND $columnTemplateId = ? AND $columnStatus = ? AND $columnServiceId IS NULL',
+          whereArgs: [vehicleId, templateId, 'pending'],
+        );
+      }
+
+      for (final templateId in {...oldTemplateIds, ...newTemplateIds}) {
+        await _recomputeTemplateChain(txn, vehicleId, templateId);
+      }
+
+      for (final path in newPhotoPaths) {
+        await txn.insert(tablePhotos, {
+          columnParentId: id,
+          columnParentType: 'service',
+          columnUri: path,
+        });
+      }
+      return id;
+    });
+  }
+
+  /// Deletes a service with its parts, the reminders it created and its
+  /// photos, then repairs the reminder chain so the previous service's
+  /// reminder becomes pending again.
+  Future<void> deleteServiceFully(int serviceId) async {
+    final db = await instance.database;
+    final List<String> photoPaths = [];
+
+    await db.transaction((txn) async {
+      final service = await txn.query(
+        tableServices,
+        columns: [columnVehicleId],
+        where: '$columnId = ?',
+        whereArgs: [serviceId],
+        limit: 1,
+      );
+      if (service.isEmpty) return;
+      final int vehicleId = service.first[columnVehicleId] as int;
+
+      final templateIds = await _templateIdsForService(txn, serviceId);
+      final completedByThis = await txn.query(
+        tableReminders,
+        columns: [columnTemplateId],
+        where:
+            '$columnCompletedByServiceId = ? AND $columnTemplateId IS NOT NULL',
+        whereArgs: [serviceId],
+      );
+      templateIds.addAll(
+        completedByThis.map((r) => r[columnTemplateId] as int),
+      );
+
+      final photos = await txn.query(
+        tablePhotos,
+        columns: [columnUri],
+        where: "$columnParentType = 'service' AND $columnParentId = ?",
+        whereArgs: [serviceId],
+      );
+      photoPaths.addAll(photos.map((r) => r[columnUri] as String? ?? ''));
+      await txn.delete(
+        tablePhotos,
+        where: "$columnParentType = 'service' AND $columnParentId = ?",
+        whereArgs: [serviceId],
+      );
+
+      await txn.delete(
+        tableReminders,
+        where: '$columnServiceId = ?',
+        whereArgs: [serviceId],
+      );
+      // Anything it completed goes back to pending (recompute may complete
+      // it again if a later service also has the part).
+      await txn.update(
+        tableReminders,
+        {columnStatus: 'pending', columnCompletedByServiceId: null},
+        where: '$columnCompletedByServiceId = ?',
+        whereArgs: [serviceId],
+      );
+      await txn.delete(
+        tableServiceItems,
+        where: '$columnServiceId = ?',
+        whereArgs: [serviceId],
+      );
+      await txn.delete(
+        tableServices,
+        where: '$columnId = ?',
+        whereArgs: [serviceId],
+      );
+
+      for (final templateId in templateIds) {
+        await _recomputeTemplateChain(txn, vehicleId, templateId);
+      }
+    });
+
+    await _deleteFilesIfUnreferenced(photoPaths);
+  }
+
+  /// Saves a vehicle and its new photos together. Returns the vehicle id.
+  Future<int> saveVehicleWithPhotos({
+    required Map<String, dynamic> vehicleRow,
+    required List<String> newPhotoPaths,
+  }) async {
+    final db = await instance.database;
+    return db.transaction((txn) async {
+      int id;
+      if (vehicleRow[columnId] != null) {
+        id = vehicleRow[columnId] as int;
+        await txn.update(
+          tableVehicles,
+          vehicleRow,
+          where: '$columnId = ?',
+          whereArgs: [id],
+        );
+      } else {
+        id = await txn.insert(tableVehicles, vehicleRow);
+      }
+      for (final path in newPhotoPaths) {
+        await txn.insert(tablePhotos, {
+          columnParentId: id,
+          columnParentType: 'vehicle',
+          columnUri: path,
+        });
+      }
+      return id;
+    });
+  }
+
+  /// Deletes photo rows by id, then their files if nothing else uses them.
+  Future<void> deletePhotosByIds(Iterable<int> ids) async {
+    final idList = ids.toList();
+    if (idList.isEmpty) return;
+    final db = await instance.database;
+    final placeholders = List.filled(idList.length, '?').join(',');
+    final rows = await db.query(
+      tablePhotos,
+      columns: [columnUri],
+      where: '$columnId IN ($placeholders)',
+      whereArgs: idList,
+    );
+    await db.delete(
+      tablePhotos,
+      where: '$columnId IN ($placeholders)',
+      whereArgs: idList,
+    );
+    await _deleteFilesIfUnreferenced(
+      rows.map((r) => r[columnUri] as String? ?? ''),
     );
   }
 
@@ -835,8 +1276,53 @@ class DatabaseHelper {
     Directory appDocDir =
         await getApplicationDocumentsDirectory(); // For saving files
 
+    // Files used by the data that is about to be wiped. They are removed only
+    // after the restore succeeds, and only if the restored data doesn't use
+    // them (a JSON-only restore keeps the old paths).
+    final List<String> oldFiles = [
+      for (final r in await db.query(tablePhotos, columns: [columnUri]))
+        r[columnUri] as String? ?? '',
+      for (final r in await db.query(
+        tableVehiclePapers,
+        columns: [columnFilePath],
+      ))
+        r[columnFilePath] as String? ?? '',
+      for (final r in await db.query(tableDocuments, columns: [columnFilePath]))
+        r[columnFilePath] as String? ?? '',
+    ];
+    // Files copied in by this restore; deleted again if it fails.
+    final List<String> copiedFiles = [];
+
+    Future<String?> copyFromBackup(String fileNameInZip, String newName) async {
+      if (fileSourcePath == null) return null;
+      final source = File(join(fileSourcePath, fileNameInZip));
+      if (!await source.exists()) return null;
+      final newPath = join(appDocDir.path, newName);
+      await source.copy(newPath);
+      copiedFiles.add(newPath);
+      return newPath;
+    }
+
+    List<dynamic> rowsOf(String key) => (data[key] as List?) ?? const [];
+
     // We must use a "transaction" so if *any* part fails,
     // the whole thing is rolled back.
+    try {
+      await _restoreInTransaction(db, rowsOf, copyFromBackup);
+    } catch (e) {
+      await FileStorage.deleteOwnedFiles(copiedFiles);
+      rethrow;
+    }
+    await _deleteFilesIfUnreferenced(oldFiles);
+    print("Database restore complete.");
+  }
+
+  Future<void> _restoreInTransaction(
+    Database db,
+    List<dynamic> Function(String key) rowsOf,
+    Future<String?> Function(String fileNameInZip, String newName)
+    copyFromBackup,
+  ) async {
     await db.transaction((txn) async {
       // --- 1. WIPE ALL CURRENT DATA (in correct order) ---
       await txn.delete(tableDocuments); // Wipe last
@@ -860,8 +1346,11 @@ class DatabaseHelper {
 
       // --- 3. RESTORE DATA (in correct order) ---
 
+      // Rows whose vehicle or service is missing from the backup (left behind
+      // by older versions) are skipped instead of failing the whole restore.
+
       // Vendors
-      for (var row in (data['vendors'] as List)) {
+      for (var row in rowsOf('vendors')) {
         int oldId = row[columnId];
         row.remove(columnId); // Remove old ID
         int newId = await txn.insert(tableVendors, row as Map<String, dynamic>);
@@ -869,7 +1358,7 @@ class DatabaseHelper {
       }
 
       // Templates
-      for (var row in (data['service_templates'] as List)) {
+      for (var row in rowsOf('service_templates')) {
         int oldId = row[columnId];
         row.remove(columnId);
         int newId = await txn.insert(
@@ -880,7 +1369,7 @@ class DatabaseHelper {
       }
 
       // Vehicles
-      for (var row in (data['vehicles'] as List)) {
+      for (var row in rowsOf('vehicles')) {
         int oldId = row[columnId];
         row.remove(columnId);
         int newId = await txn.insert(
@@ -891,11 +1380,13 @@ class DatabaseHelper {
       }
 
       // Services
-      for (var row in (data['services'] as List)) {
+      for (var row in rowsOf('services')) {
         int oldId = row[columnId];
+        final int? vehicleId = vehicleIdMap[row[columnVehicleId]];
+        if (vehicleId == null) continue;
         row.remove(columnId);
         // Update foreign keys
-        row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
+        row[columnVehicleId] = vehicleId;
         row[columnVendorId] = vendorIdMap[row[columnVendorId]];
         row[columnTemplateId] = templateIdMap[row[columnTemplateId]];
 
@@ -907,130 +1398,117 @@ class DatabaseHelper {
       }
 
       // Service Items
-      for (var row in (data['service_items'] as List)) {
+      for (var row in rowsOf('service_items')) {
+        final int? serviceId = serviceIdMap[row[columnServiceId]];
+        if (serviceId == null) continue;
         row.remove(columnId);
-        // Update foreign key
-        row[columnServiceId] = serviceIdMap[row[columnServiceId]];
+        // Update foreign keys
+        row[columnServiceId] = serviceId;
+        row[columnTemplateId] = templateIdMap[row[columnTemplateId]];
         await txn.insert(tableServiceItems, row as Map<String, dynamic>);
       }
 
       // Expenses
-      for (var row in (data['expenses'] as List)) {
+      for (var row in rowsOf('expenses')) {
+        final int? vehicleId = vehicleIdMap[row[columnVehicleId]];
+        if (vehicleId == null) continue;
         row.remove(columnId);
-        // Update foreign key
-        row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
+        row[columnVehicleId] = vehicleId;
         await txn.insert(tableExpenses, row as Map<String, dynamic>);
       }
 
       // Vehicle Papers
-      if (data.containsKey('vehicle_papers')) {
-        for (var row in (data['vehicle_papers'] as List)) {
-          int oldId = row[columnId];
-          row.remove(columnId);
-          row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
-
-          // Handle File
-          if (fileSourcePath != null &&
-              row[columnFilePath] != null &&
-              row[columnFilePath].isNotEmpty) {
-            String oldPath = row[columnFilePath];
-            String ext = extension(oldPath);
-            String fileNameInZip = 'papers/paper_$oldId$ext';
-            File sourceFile = File(join(fileSourcePath, fileNameInZip));
-            if (await sourceFile.exists()) {
-              String newFileName =
-                  'paper_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext';
-              String newPath = join(appDocDir.path, newFileName);
-              await sourceFile.copy(newPath);
-              row[columnFilePath] = newPath;
-            }
-          }
-
-          await txn.insert(tableVehiclePapers, row as Map<String, dynamic>);
-        }
-      }
-
-      // Documents
-      if (data.containsKey('documents')) {
-        for (var row in (data['documents'] as List)) {
-          int oldId = row[columnId];
-          row.remove(columnId);
-          if (row[columnVehicleId] != null) {
-            row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
-          }
-
-          // Handle File
-          if (fileSourcePath != null &&
-              row[columnFilePath] != null &&
-              row[columnFilePath].isNotEmpty) {
-            String oldPath = row[columnFilePath];
-            String ext = extension(oldPath);
-            String fileNameInZip = 'documents/doc_$oldId$ext';
-            File sourceFile = File(join(fileSourcePath, fileNameInZip));
-            if (await sourceFile.exists()) {
-              String newFileName =
-                  'doc_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext';
-              String newPath = join(appDocDir.path, newFileName);
-              await sourceFile.copy(newPath);
-              row[columnFilePath] = newPath;
-            }
-          }
-
-          await txn.insert(tableDocuments, row as Map<String, dynamic>);
-        }
-      }
-
-      // Reminders
-      for (var row in (data['reminders'] as List)) {
+      for (var row in rowsOf('vehicle_papers')) {
+        int oldId = row[columnId];
+        final int? vehicleId = vehicleIdMap[row[columnVehicleId]];
+        if (vehicleId == null) continue;
         row.remove(columnId);
-        // Update foreign keys
-        row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
+        row[columnVehicleId] = vehicleId;
+
+        final String? oldPath = row[columnFilePath];
+        if (oldPath != null && oldPath.isNotEmpty) {
+          String ext = extension(oldPath);
+          final newPath = await copyFromBackup(
+            'papers/paper_$oldId$ext',
+            'paper_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext',
+          );
+          if (newPath != null) row[columnFilePath] = newPath;
+        }
+
+        await txn.insert(tableVehiclePapers, row as Map<String, dynamic>);
+      }
+
+      // Documents (vehicle is optional)
+      for (var row in rowsOf('documents')) {
+        int oldId = row[columnId];
+        row.remove(columnId);
+        if (row[columnVehicleId] != null) {
+          row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
+        }
+
+        final String? oldPath = row[columnFilePath];
+        if (oldPath != null && oldPath.isNotEmpty) {
+          String ext = extension(oldPath);
+          final newPath = await copyFromBackup(
+            'documents/doc_$oldId$ext',
+            'doc_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext',
+          );
+          if (newPath != null) row[columnFilePath] = newPath;
+        }
+
+        await txn.insert(tableDocuments, row as Map<String, dynamic>);
+      }
+
+      // Reminders: point their service links at the new service ids, or
+      // editing a restored service would change other services' reminders.
+      for (var row in rowsOf('reminders')) {
+        final int? vehicleId = vehicleIdMap[row[columnVehicleId]];
+        if (vehicleId == null) continue;
+        row.remove(columnId);
+        row[columnVehicleId] = vehicleId;
         row[columnTemplateId] = templateIdMap[row[columnTemplateId]];
+        row[columnServiceId] = serviceIdMap[row[columnServiceId]];
+        row[columnCompletedByServiceId] =
+            serviceIdMap[row[columnCompletedByServiceId]];
         await txn.insert(tableReminders, row as Map<String, dynamic>);
       }
 
       // TodoList
-      if (data.containsKey('todolist') && data['todolist'] != null) {
-        for (var row in (data['todolist'] as List)) {
-          row.remove(columnId);
-          // Update foreign key
-          row[columnVehicleId] = vehicleIdMap[row[columnVehicleId]];
-          await txn.insert(tableTodoList, row as Map<String, dynamic>);
-        }
+      for (var row in rowsOf('todolist')) {
+        final int? vehicleId = vehicleIdMap[row[columnVehicleId]];
+        if (vehicleId == null) continue;
+        row.remove(columnId);
+        row[columnVehicleId] = vehicleId;
+        await txn.insert(tableTodoList, row as Map<String, dynamic>);
       }
 
       // Photos
-      for (var row in (data['photos'] as List)) {
+      for (var row in rowsOf('photos')) {
         int oldId = row[columnId]; // Save old ID for file lookup
-        row.remove(columnId);
-        // Update foreign keys (this is complex)
+        int? parentId;
         if (row[columnParentType] == 'vehicle') {
-          row[columnParentId] = vehicleIdMap[row[columnParentId]];
+          parentId = vehicleIdMap[row[columnParentId]];
         } else if (row[columnParentType] == 'service') {
-          row[columnParentId] = serviceIdMap[row[columnParentId]];
+          parentId = serviceIdMap[row[columnParentId]];
         }
+        // Orphan photo (its vehicle/service was deleted): skip it.
+        if (parentId == null) continue;
+        row.remove(columnId);
+        row[columnParentId] = parentId;
 
-        // Handle File
-        if (fileSourcePath != null &&
-            row[columnUri] != null &&
-            row[columnUri].isNotEmpty) {
-          String oldPath = row[columnUri];
+        final String? oldPath = row[columnUri];
+        if (oldPath != null && oldPath.isNotEmpty) {
           String ext = extension(oldPath);
-          String fileNameInZip = 'photos/photo_$oldId$ext';
-          File sourceFile = File(join(fileSourcePath, fileNameInZip));
-          if (await sourceFile.exists()) {
-            String newFileName =
-                'photo_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext';
-            String newPath = join(appDocDir.path, newFileName);
-            await sourceFile.copy(newPath);
-            row[columnUri] = newPath;
-          }
+          final newPath = await copyFromBackup(
+            'photos/photo_$oldId$ext',
+            'photo_${DateTime.now().millisecondsSinceEpoch}_$oldId$ext',
+          );
+          if (newPath != null) row[columnUri] = newPath;
         }
 
         await txn.insert(tablePhotos, row as Map<String, dynamic>);
       }
     });
-    print("Database restore complete.");
   }
 
   Future<bool> queryReminderExists(int vehicleId, int templateId) async {
@@ -1110,7 +1588,24 @@ class DatabaseHelper {
     Database db = await instance.database;
     return await db.update(
       tableReminders,
-      {columnDueDate: newDueDate, columnDueOdometer: newDueOdometer},
+      {
+        columnDueDate: newDueDate,
+        columnDueOdometer: newDueOdometer,
+        // New due point: notify again from the start.
+        columnLastNotifiedAt: null,
+      },
+      where: '$columnId = ?',
+      whereArgs: [id],
+    );
+  }
+
+  /// Records which notification stage was last shown for a reminder.
+  /// Stored as "YYYY-MM-DD|stage" in last_notified_at.
+  Future<int> updateReminderLastNotified(int id, String value) async {
+    Database db = await instance.database;
+    return await db.update(
+      tableReminders,
+      {columnLastNotifiedAt: value},
       where: '$columnId = ?',
       whereArgs: [id],
     );
@@ -1309,9 +1804,11 @@ class DatabaseHelper {
     Database db = await instance.database;
     final String sql =
         '''
-    SELECT 
+    SELECT
       r.*,
-      v.$columnCurrentOdometer, 
+      v.$columnCurrentOdometer,
+      v.$columnMake,
+      v.$columnModel,
       t.$columnName AS template_name
     FROM $tableReminders r
     JOIN $tableVehicles v ON v.$columnId = r.$columnVehicleId
@@ -1346,6 +1843,23 @@ class DatabaseHelper {
       where: '$columnId = ?',
       whereArgs: [id],
     );
+  }
+
+  /// Deletes a paper and its attached file, unless another row still uses
+  /// that file (older versions could give two papers the same file).
+  Future<void> deleteVehiclePaperWithFile(int id) async {
+    final paper = await queryVehiclePaperById(id);
+    await deleteVehiclePaper(id);
+    final path = paper?[columnFilePath] as String?;
+    if (path != null) await _deleteFilesIfUnreferenced([path]);
+  }
+
+  /// Deletes a general document and its file (if nothing else uses it).
+  Future<void> deleteGeneralDocumentWithFile(int id) async {
+    final doc = await queryGeneralDocumentById(id);
+    await deleteGeneralDocument(id);
+    final path = doc?[columnFilePath] as String?;
+    if (path != null) await _deleteFilesIfUnreferenced([path]);
   }
 
   // Get all papers for a SINGLE vehicle

@@ -279,6 +279,9 @@ class _HomeScreenState extends State<HomeScreen>
   ) {
     final bool isSelected = index == _currentTabIndex;
     final Color primaryColor = settings.primaryColor;
+    // White on dark colors, near-black on light ones (yellow, white...), so
+    // the bar stays readable with any custom color.
+    final Color onPrimary = settings.onPrimaryColor;
 
     return GestureDetector(
       // Assign the GlobalKey to the GestureDetector or the Container
@@ -292,8 +295,8 @@ class _HomeScreenState extends State<HomeScreen>
         curve: Curves.easeInOut,
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 16),
         decoration: BoxDecoration(
-          // White pill for selected, transparent for unselected
-          color: isSelected ? Colors.white : Colors.transparent,
+          // Contrast pill for selected, transparent for unselected
+          color: isSelected ? onPrimary : Colors.transparent,
           borderRadius: BorderRadius.circular(30),
         ),
         child: Row(
@@ -303,8 +306,9 @@ class _HomeScreenState extends State<HomeScreen>
             Icon(
               _navItems[index].icon,
               size: 24,
-              // Icon is Primary Color if selected (on White), White if unselected (on Primary Bar)
-              color: isSelected ? primaryColor : Colors.white,
+              // Primary color on the pill when selected, contrast color on
+              // the bar otherwise.
+              color: isSelected ? primaryColor : onPrimary,
             ),
             // 2. Text (Revealed when selected)
             AnimatedSize(

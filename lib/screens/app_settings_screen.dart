@@ -12,8 +12,9 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import '../screens/vehicle_list.dart';
 import '../screens/todo_list_screen.dart';
 
-import 'package:archive/archive_io.dart';
 import 'package:path/path.dart' as p;
+import '../service/backup_archive.dart';
+import '../utils/formatters.dart';
 import '../service/subscription_provider.dart';
 import '../screens/paywall_screen.dart';
 
@@ -86,66 +87,25 @@ class AppSettingsScreen extends StatelessWidget {
         'todolist': allTodos,
       };
 
-      // Create Archive
-      final archive = Archive();
-
-      // Add JSON
-      String jsonBackup = jsonEncode(backupData);
-      final jsonBytes = utf8.encode(jsonBackup);
-      archive.addFile(ArchiveFile('backup.json', jsonBytes.length, jsonBytes));
-
-      // Add Photos
-      for (var photo in allPhotos) {
-        String? path = photo[DatabaseHelper.columnUri];
-        if (path != null && path.isNotEmpty) {
-          final file = File(path);
-          if (await file.exists()) {
-            final bytes = await file.readAsBytes();
-            final ext = p.extension(path);
-            final id = photo[DatabaseHelper.columnId];
-            archive.addFile(
-              ArchiveFile('photos/photo_$id$ext', bytes.length, bytes),
-            );
-          }
+      // Files to put in the zip: zip entry name -> file on disk. Entry names
+      // are what restoreBackup() looks for.
+      final Map<String, String> files = {};
+      void addFiles(
+        List<Map<String, dynamic>> rows,
+        String pathColumn,
+        String prefix,
+      ) {
+        for (final row in rows) {
+          final String? path = row[pathColumn];
+          if (path == null || path.isEmpty) continue;
+          files['$prefix${row[DatabaseHelper.columnId]}${p.extension(path)}'] =
+              path;
         }
       }
 
-      // Add Papers
-      for (var paper in allPapers) {
-        String? path = paper[DatabaseHelper.columnFilePath];
-        if (path != null && path.isNotEmpty) {
-          final file = File(path);
-          if (await file.exists()) {
-            final bytes = await file.readAsBytes();
-            final ext = p.extension(path);
-            final id = paper[DatabaseHelper.columnId];
-            archive.addFile(
-              ArchiveFile('papers/paper_$id$ext', bytes.length, bytes),
-            );
-          }
-        }
-      }
-
-      // Add Documents
-      for (var doc in allDocuments) {
-        String? path = doc[DatabaseHelper.columnFilePath];
-        if (path != null && path.isNotEmpty) {
-          final file = File(path);
-          if (await file.exists()) {
-            final bytes = await file.readAsBytes();
-            final ext = p.extension(path);
-            final id = doc[DatabaseHelper.columnId];
-            archive.addFile(
-              ArchiveFile('documents/doc_$id$ext', bytes.length, bytes),
-            );
-          }
-        }
-      }
-
-      // Save Zip
-      final encoder = ZipEncoder();
-      final zipBytes = encoder.encode(archive);
-      if (zipBytes == null) throw Exception('Failed to create zip');
+      addFiles(allPhotos, DatabaseHelper.columnUri, 'photos/photo_');
+      addFiles(allPapers, DatabaseHelper.columnFilePath, 'papers/paper_');
+      addFiles(allDocuments, DatabaseHelper.columnFilePath, 'documents/doc_');
 
       final directory = await getTemporaryDirectory();
       String timestamp = DateTime.now()
@@ -154,9 +114,10 @@ class AppSettingsScreen extends StatelessWidget {
           .replaceAll(' ', '_');
       String fileName = 'mechminder_backup_$timestamp.zip';
       final filePath = '${directory.path}/$fileName';
-      final file = File(filePath);
 
-      await file.writeAsBytes(zipBytes);
+      // Zipping runs on a background isolate and streams each file, so big
+      // backups no longer freeze the screen or run out of memory.
+      await BackupArchive.writeZip(filePath, jsonEncode(backupData), files);
       print("Backup file created at: $filePath");
 
       if (!context.mounted) return;
@@ -174,10 +135,12 @@ class AppSettingsScreen extends StatelessWidget {
               onPressed: () async {
                 Navigator.of(ctx).pop();
                 final xfile = XFile(filePath);
-                await Share.shareXFiles(
-                  [xfile],
-                  subject: 'MechMinder Data Backup (With Files)',
-                  text: 'Here is the MechMinder backup file.',
+                await SharePlus.instance.share(
+                  ShareParams(
+                    files: [xfile],
+                    subject: 'MechMinder Data Backup (With Files)',
+                    text: 'Here is the MechMinder backup file.',
+                  ),
                 );
               },
             ),
@@ -257,24 +220,62 @@ class AppSettingsScreen extends StatelessWidget {
   Future<void> _importData(BuildContext context) async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     final dbHelper = DatabaseHelper.instance;
+    Directory? extractDir;
     try {
-      FilePickerResult? result = await FilePicker.platform.pickFiles(
+      final PlatformFile? picked = await FilePicker.pickFile(
         type: FileType.custom,
         allowedExtensions: ['json', 'zip'],
       );
-      if (result == null || result.files.single.path == null) {
+      final String? pickedPath = picked?.path;
+      if (pickedPath == null) {
         scaffoldMessenger.showSnackBar(
           const SnackBar(content: Text('No file selected.')),
         );
         return;
       }
+
+      // Read and check the backup BEFORE anything is wiped, so a broken or
+      // wrong file can't leave the app empty.
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Reading backup...')),
+      );
+      final bool isZip = p.extension(pickedPath).toLowerCase() == '.zip';
+      String jsonString;
+      if (isZip) {
+        final tempDir = await getTemporaryDirectory();
+        extractDir = Directory(p.join(tempDir.path, 'restore_temp'));
+        if (await extractDir.exists()) {
+          await extractDir.delete(recursive: true);
+        }
+        await extractDir.create(recursive: true);
+        // Background isolate; unsafe paths in the zip are skipped.
+        jsonString = await BackupArchive.extractZip(
+          pickedPath,
+          extractDir.path,
+        );
+      } else {
+        jsonString = await File(pickedPath).readAsString();
+      }
+      final decoded = jsonDecode(jsonString);
+      if (decoded is! Map<String, dynamic> || decoded['vehicles'] is! List) {
+        throw const FormatException('This file is not a MechMinder backup.');
+      }
+      final Map<String, dynamic> backupData = decoded;
+      final int vehicleCount = (backupData['vehicles'] as List).length;
+      final int serviceCount = (backupData['services'] as List?)?.length ?? 0;
+      final String exportDate = Fmt.date(backupData['export_date'] as String?);
+
       if (!context.mounted) return;
+      scaffoldMessenger.hideCurrentSnackBar();
       bool? confirmed = await showDialog<bool>(
         context: context,
         builder: (ctx) => AlertDialog(
           title: const Text('ARE YOU SURE?'),
-          content: const Text(
-            'Restoring from a backup will DELETE ALL current data in the app. This cannot be undone.',
+          content: Text(
+            'This backup${exportDate.isEmpty ? '' : ' from $exportDate'} has '
+            '$vehicleCount vehicle${vehicleCount == 1 ? '' : 's'} and '
+            '$serviceCount service record${serviceCount == 1 ? '' : 's'}.\n\n'
+            'Restoring it will DELETE ALL current data in the app. This cannot be undone.',
           ),
           actions: [
             TextButton(
@@ -302,53 +303,10 @@ class AppSettingsScreen extends StatelessWidget {
         const SnackBar(content: Text('Restoring data... Please wait.')),
       );
 
-      File backupFile = File(result.files.single.path!);
-      String extension = p.extension(backupFile.path).toLowerCase();
-
-      if (extension == '.zip') {
-        // Handle ZIP
-        final bytes = await backupFile.readAsBytes();
-        final archive = ZipDecoder().decodeBytes(bytes);
-
-        // Find JSON
-        final jsonFile = archive.findFile('backup.json');
-        if (jsonFile == null) {
-          throw Exception('Invalid Backup: backup.json not found in zip');
-        }
-
-        String jsonString = utf8.decode(jsonFile.content);
-        Map<String, dynamic> backupData = jsonDecode(jsonString);
-
-        // Extract all files to a temp dir for dbHelper to access
-        final tempDir = await getTemporaryDirectory();
-        final extractDir = Directory('${tempDir.path}/restore_temp');
-        if (await extractDir.exists()) {
-          await extractDir.delete(recursive: true);
-        }
-        await extractDir.create();
-
-        for (final file in archive) {
-          if (file.isFile) {
-            final data = file.content as List<int>;
-            final filename = file.name;
-            final filepath = '${extractDir.path}/$filename';
-            // Create subdirectories if needed
-            final File f = File(filepath);
-            await f.create(recursive: true);
-            await f.writeAsBytes(data);
-          }
-        }
-
-        await dbHelper.restoreBackup(
-          backupData,
-          fileSourcePath: extractDir.path,
-        );
-      } else {
-        // Handle JSON
-        String jsonString = await backupFile.readAsString();
-        Map<String, dynamic> backupData = jsonDecode(jsonString);
-        await dbHelper.restoreBackup(backupData);
-      }
+      await dbHelper.restoreBackup(
+        backupData,
+        fileSourcePath: extractDir?.path,
+      );
 
       // --- REFRESH LOGIC ---
       // 1. Refresh the lists using the keys
@@ -373,6 +331,15 @@ class AppSettingsScreen extends StatelessWidget {
       scaffoldMessenger.showSnackBar(
         SnackBar(content: Text('Error importing data: $e')),
       );
+    } finally {
+      // The extracted copy is no longer needed (files were copied in).
+      if (extractDir != null) {
+        try {
+          if (await extractDir.exists()) {
+            await extractDir.delete(recursive: true);
+          }
+        } catch (_) {}
+      }
     }
   }
 

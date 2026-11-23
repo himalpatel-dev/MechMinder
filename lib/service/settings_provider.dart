@@ -24,6 +24,16 @@ class SettingsProvider with ChangeNotifier {
   ThemeMode get themeMode => _themeMode;
   Color get primaryColor => _primaryColor; // <-- NEW
 
+  /// Text/icon color that stays readable on [primaryColor]: white on dark
+  /// colors, near-black on light ones (yellow, white, light green...).
+  Color get onPrimaryColor => contrastOn(_primaryColor);
+
+  /// Readable text/icon color for anything drawn on [background].
+  static Color contrastOn(Color background) =>
+      ThemeData.estimateBrightnessForColor(background) == Brightness.dark
+      ? Colors.white
+      : Colors.black87;
+
   SettingsProvider() {
     _loadSettings();
   }

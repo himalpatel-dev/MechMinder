@@ -43,7 +43,9 @@ class _VendorListScreenState extends State<VendorListScreen> {
 
     if (isEditing) {
       _nameController.text = vendor[DatabaseHelper.columnName] ?? '';
-      _phoneController.text = vendor[DatabaseHelper.columnPhone] ?? '';
+      _phoneController.text = _normalizePhone(
+        vendor[DatabaseHelper.columnPhone] ?? '',
+      );
       _addressController.text = vendor[DatabaseHelper.columnAddress] ?? '';
     } else {
       _nameController.clear();
@@ -73,11 +75,16 @@ class _VendorListScreenState extends State<VendorListScreen> {
               const SizedBox(height: 16),
               _buildTextField(
                 _phoneController,
-                "Phone",
+                "Mobile No.",
                 Icons.phone,
                 primaryColor,
                 false,
-                TextInputType.phone,
+                TextInputType.number,
+                // Digits only, at most 10.
+                [
+                  FilteringTextInputFormatter.digitsOnly,
+                  LengthLimitingTextInputFormatter(_maxPhoneDigits),
+                ],
               ),
               const SizedBox(height: 16),
               _buildTextField(
@@ -120,7 +127,12 @@ class _VendorListScreenState extends State<VendorListScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('Save', style: TextStyle(color: Colors.white)),
+              child: Text(
+                'Save',
+                style: TextStyle(
+                  color: SettingsProvider.contrastOn(primaryColor),
+                ),
+              ),
             ),
           ],
         );
@@ -135,11 +147,13 @@ class _VendorListScreenState extends State<VendorListScreen> {
     Color color,
     bool autofocus, [
     TextInputType? type,
+    List<TextInputFormatter>? inputFormatters,
   ]) {
     return TextField(
       controller: controller,
       autofocus: autofocus,
       keyboardType: type,
+      inputFormatters: inputFormatters,
       decoration: InputDecoration(
         labelText: label,
         prefixIcon: Icon(icon, color: color, size: 20),
@@ -153,11 +167,23 @@ class _VendorListScreenState extends State<VendorListScreen> {
     );
   }
 
+  static const int _maxPhoneDigits = 10;
+
+  /// Keeps only digits, max 10. For longer numbers (e.g. "+91 98765 43210"
+  /// saved before this limit) the last 10 digits are kept, which drops the
+  /// country code.
+  static String _normalizePhone(String value) {
+    final digits = value.replaceAll(RegExp(r'\D'), '');
+    return digits.length > _maxPhoneDigits
+        ? digits.substring(digits.length - _maxPhoneDigits)
+        : digits;
+  }
+
   void _saveVendor(Map<String, dynamic>? vendor) async {
     bool isEditing = vendor != null;
     Map<String, dynamic> row = {
       DatabaseHelper.columnName: _nameController.text.trim(),
-      DatabaseHelper.columnPhone: _phoneController.text.trim(),
+      DatabaseHelper.columnPhone: _normalizePhone(_phoneController.text),
       DatabaseHelper.columnAddress: _addressController.text.trim(),
     };
 
@@ -253,10 +279,13 @@ class _VendorListScreenState extends State<VendorListScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddEditVendorDialog(vendor: null),
         backgroundColor: primaryColor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
+        icon: Icon(Icons.add, color: SettingsProvider.contrastOn(primaryColor)),
+        label: Text(
           "Add Workshop",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: SettingsProvider.contrastOn(primaryColor),
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );

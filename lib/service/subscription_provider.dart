@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart'
+    show kIsWeb, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,13 +8,25 @@ import 'dart:async';
 class SubscriptionProvider with ChangeNotifier {
   static const String _trialStartDateKey = 'trial_start_date_v1';
   static const String _premiumOverrideKey = 'premium_override_enabled';
+  // Set once the store confirms the purchase, so a buyer keeps access after
+  // the trial ends even before the store answers on the next launch.
+  static const String _premiumPurchasedKey = 'premium_purchased_v1';
   static const int _trialDurationDays = 15;
 
   // REPLACE THIS with your actual Product ID from Google Play Console
   static const String _productID = 'lifetime_subscription_199';
 
-  final InAppPurchase _iap = InAppPurchase.instance;
-  bool _available = true;
+  // in_app_purchase only has Android and iOS/macOS implementations. On web,
+  // Windows and Linux every call into it throws, so we skip it there.
+  static bool get _isStoreSupported =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS ||
+          defaultTargetPlatform == TargetPlatform.macOS);
+
+  // Lazy so the plugin is never touched on unsupported platforms.
+  InAppPurchase get _iap => InAppPurchase.instance;
+  bool _available = _isStoreSupported;
   List<ProductDetails> _products = [];
   bool _isPremium = false;
   bool _isTrialActive = true;
@@ -31,17 +45,30 @@ class SubscriptionProvider with ChangeNotifier {
   }
 
   Future<void> _init() async {
-    // 1. Check Trial Status & Local Override
-    await _checkTrialStatus();
+    try {
+      // 1. Check Trial Status & Local Override
+      await _checkTrialStatus();
 
-    // 2. Initialize IAP and check past purchases
-    // Only fetch if not already overridden locally
-    if (!_isPremium) {
+      // 2. Initialize IAP. Always listen to the purchase stream so purchases
+      // that were still pending last time get completed.
       await _initIAP();
-    }
 
-    _loading = false;
-    notifyListeners();
+      // 3. Ask the store for past purchases (e.g. after a reinstall or
+      // "Clear storage"). Results arrive on the purchase stream. On Android
+      // this is silent; on iOS it can show a sign-in prompt, so we only do
+      // it automatically on Android.
+      if (!_isPremium &&
+          _available &&
+          defaultTargetPlatform == TargetPlatform.android) {
+        await _iap.restorePurchases();
+      }
+    } catch (e) {
+      debugPrint('SubscriptionProvider init failed: $e');
+    } finally {
+      // Always finish loading, otherwise the splash screen waits on us.
+      _loading = false;
+      notifyListeners();
+    }
   }
 
   Future<void> _checkTrialStatus() async {
@@ -54,6 +81,10 @@ class SubscriptionProvider with ChangeNotifier {
       _isTrialActive = false; // Not needed
       _daysLeft = 9999;
       return;
+    }
+
+    if (prefs.getBool(_premiumPurchasedKey) ?? false) {
+      _isPremium = true;
     }
 
     String? startDateStr = prefs.getString(_trialStartDateKey);
@@ -73,6 +104,10 @@ class SubscriptionProvider with ChangeNotifier {
   }
 
   Future<void> _initIAP() async {
+    if (!_isStoreSupported) {
+      _available = false;
+      return;
+    }
     _available = await _iap.isAvailable();
     if (!_available) {
       return;
@@ -113,8 +148,9 @@ class SubscriptionProvider with ChangeNotifier {
       } else {
         if (purchaseDetails.status == PurchaseStatus.error) {
           // Handle error
-        } else if (purchaseDetails.status == PurchaseStatus.purchased ||
-            purchaseDetails.status == PurchaseStatus.restored) {
+        } else if ((purchaseDetails.status == PurchaseStatus.purchased ||
+                purchaseDetails.status == PurchaseStatus.restored) &&
+            purchaseDetails.productID == _productID) {
           _grantPremium();
         }
 
@@ -125,9 +161,15 @@ class SubscriptionProvider with ChangeNotifier {
     }
   }
 
-  void _grantPremium() {
+  Future<void> _grantPremium() async {
     _isPremium = true;
     notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool(_premiumPurchasedKey, true);
+    } catch (e) {
+      debugPrint('Could not save premium state: $e');
+    }
   }
 
   Future<String?> buyLifetime() async {
@@ -157,6 +199,7 @@ class SubscriptionProvider with ChangeNotifier {
   }
 
   Future<void> restorePurchases() async {
+    if (!_available) return;
     await _iap.restorePurchases();
   }
 

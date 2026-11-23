@@ -97,15 +97,16 @@ class MyApp extends StatelessWidget {
                 ),
               ),
             ),
+            // Readable on any custom color (white on dark, black on light).
             elevatedButtonTheme: ElevatedButtonThemeData(
               style: ElevatedButton.styleFrom(
                 backgroundColor: myAppColor,
-                foregroundColor: Colors.white,
+                foregroundColor: settings.onPrimaryColor,
               ),
             ),
             floatingActionButtonTheme: FloatingActionButtonThemeData(
               backgroundColor: myAppColor,
-              foregroundColor: Colors.white,
+              foregroundColor: settings.onPrimaryColor,
             ),
           ),
 

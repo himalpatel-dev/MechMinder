@@ -354,7 +354,9 @@ class ExcelService {
       print("Report file created at: $filePath");
 
       final xfile = XFile(filePath);
-      await Share.shareXFiles([xfile], subject: '$vehicleName Service Report');
+      await SharePlus.instance.share(
+        ShareParams(files: [xfile], subject: '$vehicleName Service Report'),
+      );
 
       return 'Report generated!'; // Success message
     } catch (e) {

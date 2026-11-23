@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart';
 import '../service/settings_provider.dart';
+import '../utils/formatters.dart';
 import 'add_service_screen.dart';
 import '../widgets/full_screen_photo_viewer.dart';
 
@@ -52,6 +53,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         'service',
       );
 
+      if (!mounted) return;
       setState(() {
         _service = serviceData;
         _serviceItems = itemsData;
@@ -88,15 +90,20 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 foregroundColor: Colors.white,
               ),
               onPressed: () async {
-                await dbHelper.deleteService(widget.serviceId);
-                await dbHelper.deleteAllServiceItemsForService(
-                  widget.serviceId,
-                );
-                await dbHelper.deletePhotosForParent(
-                  widget.serviceId,
-                  'service',
-                );
-                await dbHelper.deleteRemindersByService(widget.serviceId);
+                // One transaction: parts, photos and this service's reminders
+                // go, and the previous service's reminder becomes pending
+                // again (it used to be left completed, so nothing was due).
+                try {
+                  await dbHelper.deleteServiceFully(widget.serviceId);
+                } catch (e) {
+                  if (ctx.mounted) Navigator.of(ctx).pop();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Could not delete: $e')),
+                    );
+                  }
+                  return;
+                }
 
                 if (mounted) {
                   Navigator.of(ctx).pop();
@@ -237,7 +244,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
             children: [
               _buildInfoColumn(
                 "Date",
-                _service![DatabaseHelper.columnServiceDate],
+                Fmt.date(_service![DatabaseHelper.columnServiceDate]),
                 Icons.calendar_today,
                 isDark,
                 primaryColor,
@@ -356,7 +363,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 ),
                 Text(
-                  '${settings.currencySymbol}${_service![DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                  Fmt.money(
+                    _service![DatabaseHelper.columnTotalCost] as num?,
+                    settings.currencySymbol,
+                  ),
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
@@ -444,10 +454,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           final item = entry.value;
           final isLast = index == _serviceItems.length - 1;
           final name = item[DatabaseHelper.columnName];
-          final qty = (item[DatabaseHelper.columnQty] as num).toDouble();
-          final cost = (item[DatabaseHelper.columnUnitCost] as num).toDouble();
-          final total = (item[DatabaseHelper.columnTotalCost] as num)
-              .toDouble();
+          final qty = (item[DatabaseHelper.columnQty] as num?)?.toDouble() ?? 1;
+          final cost =
+              (item[DatabaseHelper.columnUnitCost] as num?)?.toDouble() ?? 0;
+          final total =
+              (item[DatabaseHelper.columnTotalCost] as num?)?.toDouble() ?? 0;
 
           return Column(
             children: [
@@ -484,7 +495,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            '$qty x ${settings.currencySymbol}$cost',
+                            '${Fmt.number(qty)} x ${Fmt.money(cost, settings.currencySymbol)}',
                             style: TextStyle(
                               fontSize: 13,
                               color: Colors.grey.shade500,
@@ -494,7 +505,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                       ),
                     ),
                     Text(
-                      '${settings.currencySymbol}${total.toStringAsFixed(2)}',
+                      Fmt.money(total, settings.currencySymbol),
                       style: TextStyle(
                         fontWeight: FontWeight.bold,
                         fontSize: 15,
@@ -555,8 +566,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                   ),
                 ],
                 image: DecorationImage(
-                  image: FileImage(File(photoPath)),
+                  // Decode at thumbnail size, not the full photo.
+                  image: ResizeImage(FileImage(File(photoPath)), width: 360),
                   fit: BoxFit.cover,
+                  onError: (_, _) {},
                 ),
               ),
             ),

@@ -124,7 +124,12 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
                   borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              child: const Text('Save', style: TextStyle(color: Colors.white)),
+              child: Text(
+                'Save',
+                style: TextStyle(
+                  color: SettingsProvider.contrastOn(primaryColor),
+                ),
+              ),
             ),
           ],
         );
@@ -266,10 +271,13 @@ class _ServiceTemplatesScreenState extends State<ServiceTemplatesScreen> {
       floatingActionButton: FloatingActionButton.extended(
         onPressed: () => _showAddEditTemplateDialog(template: null),
         backgroundColor: primaryColor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
+        icon: Icon(Icons.add, color: SettingsProvider.contrastOn(primaryColor)),
+        label: Text(
           "Add Auto Part",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: SettingsProvider.contrastOn(primaryColor),
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );

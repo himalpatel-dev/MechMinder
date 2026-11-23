@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../service/database_helper.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
+import '../utils/formatters.dart';
 
 class TodoListScreen extends StatefulWidget {
   const TodoListScreen({super.key});
@@ -249,9 +250,11 @@ class TodoListScreenState extends State<TodoListScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
+                          child: Text(
                             'Save',
-                            style: TextStyle(color: Colors.white),
+                            style: TextStyle(
+                              color: SettingsProvider.contrastOn(primaryColor),
+                            ),
                           ),
                         ),
                       ],
@@ -403,8 +406,7 @@ class TodoListScreenState extends State<TodoListScreen> {
                       if (updatedAt != null && updatedAt.isNotEmpty) {
                         try {
                           final dateTime = DateTime.parse(updatedAt);
-                          completionDate =
-                              '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+                          completionDate = Fmt.date(updatedAt);
                           completionTime =
                               '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
                         } catch (e) {
@@ -567,14 +569,16 @@ class TodoListScreenState extends State<TodoListScreen> {
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Tap + to add a service reminder',
+                    'Tap + to add a to-do item',
                     style: TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                 ],
               ),
             )
           : ListView.builder(
-              padding: const EdgeInsets.all(16),
+              // Extra bottom space so the last item can scroll above the
+              // floating navigation bar and the + / history buttons.
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 160),
               itemCount: _todos.length,
               itemBuilder: (context, index) {
                 final todo = _todos[index];

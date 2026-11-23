@@ -1,12 +1,12 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../service/database_helper.dart';
+import '../service/file_storage.dart';
 import '../service/settings_provider.dart';
+import '../utils/formatters.dart';
 import '../widgets/common_popup.dart';
 
 class VehiclePapersScreen extends StatefulWidget {
@@ -54,6 +54,7 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
     final allPapers = await dbHelper.queryVehiclePapersForVehicle(
       widget.vehicleId,
     );
+    if (!mounted) return;
     setState(() {
       _papers = allPapers;
       _isLoading = false;
@@ -61,14 +62,15 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
   }
 
   Future<void> _pickFile(Function setDialogState) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    final PlatformFile? picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
     );
 
-    if (result != null && result.files.single.path != null) {
+    final String? pickedPath = picked?.path;
+    if (pickedPath != null) {
       setDialogState(() {
-        _tempFilePath = result.files.single.path;
+        _tempFilePath = pickedPath;
       });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -108,6 +110,9 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
     } else {
       _typeController.text = 'Insurance';
     }
+
+    // Ignores extra taps on Save while saving (prevented duplicate papers).
+    bool isSaving = false;
 
     showDialog(
       context: context,
@@ -264,26 +269,48 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    if (_paperFormKey.currentState!.validate()) {
-                      await _savePaper(
-                        widget.vehicleId,
-                        isEditing ? paper[DatabaseHelper.columnId] : null,
-                      );
-                      if (mounted) {
-                        Navigator.of(ctx).pop();
-                      }
-                      _refreshPapersList();
-                    }
-                  },
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          if (!_paperFormKey.currentState!.validate()) return;
+                          setDialogState(() => isSaving = true);
+                          try {
+                            await _savePaper(
+                              widget.vehicleId,
+                              isEditing ? paper[DatabaseHelper.columnId] : null,
+                            );
+                          } catch (e) {
+                            setDialogState(() => isSaving = false);
+                            if (mounted) {
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Could not save: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          _refreshPapersList();
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Provider.of<SettingsProvider>(
                       context,
                       listen: false,
                     ).primaryColor,
-                    foregroundColor: Colors.white,
+                    foregroundColor: Provider.of<SettingsProvider>(
+                      context,
+                      listen: false,
+                    ).onPrimaryColor,
                   ),
-                  child: const Text('Save'),
+                  child: isSaving
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Text('Save'),
                 ),
               ],
             );
@@ -324,18 +351,12 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
     String? finalFilePath = _tempFilePath;
 
     if (_tempFilePath != null) {
-      final appDir = await getApplicationDocumentsDirectory();
-      if (!_tempFilePath!.startsWith(appDir.path)) {
-        final String newPath = p.join(
-          appDir.path,
-          'vehicle_papers',
-          p.basename(_tempFilePath!),
-        );
-        final newFile = File(newPath);
-        await newFile.parent.create(recursive: true);
-        await File(_tempFilePath!).copy(newPath);
-        finalFilePath = newPath;
-      }
+      // Unique name in app storage. The old code kept the original file name,
+      // so two papers both called "policy.pdf" overwrote each other's file.
+      finalFilePath = await FileStorage.importFile(
+        _tempFilePath!,
+        FileStorage.papersFolder,
+      );
     }
 
     Map<String, dynamic> row = {
@@ -384,22 +405,9 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
               foregroundColor: Colors.white,
             ),
             onPressed: () async {
-              final paper = await dbHelper.queryVehiclePaperById(id);
-              if (paper != null &&
-                  paper[DatabaseHelper.columnFilePath] != null) {
-                final file = File(paper[DatabaseHelper.columnFilePath]);
-                if (await file.exists()) {
-                  try {
-                    await file.delete();
-                  } catch (e) {
-                    print("Error deleting file: $e");
-                  }
-                }
-              }
-              await dbHelper.deleteVehiclePaper(id);
-              if (mounted) {
-                Navigator.of(ctx).pop();
-              }
+              // Keeps the file if another paper still uses it.
+              await dbHelper.deleteVehiclePaperWithFile(id);
+              if (ctx.mounted) Navigator.of(ctx).pop();
               _refreshPapersList();
             },
             child: const Text('Delete'),
@@ -644,7 +652,7 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
                           Text(
                             isExpired
                                 ? 'Expired: $expiryDate'
-                                : 'Expires: $expiryDate',
+                                : 'Expires: ${Fmt.date(expiryDate)}',
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.bold,
@@ -657,7 +665,7 @@ class _VehiclePapersScreenState extends State<VehiclePapersScreen> {
                       const SizedBox(), // Spacer if no expiry date
                     if (cost != null && cost > 0)
                       Text(
-                        '${settings.currencySymbol}${cost.toStringAsFixed(2)}',
+                        Fmt.money(cost, settings.currencySymbol),
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,

@@ -28,7 +28,11 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
   // We need to fetch the odometer here to pass it to the service screen
   // ignore: unused_field
   int _currentOdometer = 0;
-  final String _vehicleName = "Loading...";
+
+  String get _vehicleName {
+    if (_vehicle == null) return 'this vehicle';
+    return '${_vehicle![DatabaseHelper.columnMake]} ${_vehicle![DatabaseHelper.columnModel]}';
+  }
 
   @override
   void initState() {
@@ -64,7 +68,16 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
       builder: (ctx) => AlertDialog(
         title: const Text('Delete Vehicle?'),
         content: Text(
-          'Are you sure you want to delete "$_vehicleName"?\n\nThis action is permanent and will delete all associated services, expenses, and reminders.',
+          'Delete "$_vehicleName" permanently?\n\n'
+          'This also deletes all of its:\n'
+          '• services, parts and bill photos\n'
+          '• expenses\n'
+          '• reminders\n'
+          '• papers (insurance, PUC, ...) and documents\n'
+          '• to-do items\n'
+          '• vehicle photos\n\n'
+          'This can\'t be undone. Make a backup first (Settings → Backup) '
+          'if you might need this data again.',
         ),
         actions: [
           TextButton(
@@ -77,9 +90,19 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
               foregroundColor: Colors.black,
             ),
             onPressed: () async {
-              await dbHelper.deleteVehicle(widget.vehicleId);
-              if (mounted) {
-                Navigator.of(ctx).pop(); // Close dialog
+              try {
+                await dbHelper.deleteVehicle(widget.vehicleId);
+              } catch (e) {
+                if (ctx.mounted) Navigator.of(ctx).pop();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Could not delete: $e')),
+                  );
+                }
+                return;
+              }
+              if (ctx.mounted) Navigator.of(ctx).pop(); // Close dialog
+              if (context.mounted) {
                 Navigator.of(context).pop(); // Go back to home screen
               }
             },
@@ -92,6 +115,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
 
   void _loadVehicleDetails() async {
     final vehicleData = await dbHelper.queryVehicleById(widget.vehicleId);
+    if (!mounted) return;
     setState(() {
       _vehicle = vehicleData;
       if (vehicleData != null) {
@@ -128,7 +152,6 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
     return Scaffold(
       appBar: AppBar(
         title: Text(vehicleName),
-        automaticallyImplyLeading: false,
         actions: [
           IconButton(
             icon: Icon(Icons.edit, color: settings.primaryColor),
@@ -183,6 +206,7 @@ class _VehicleDetailScreenState extends State<VehicleDetailScreen>
           OverviewTab(
             vehicleId: widget.vehicleId,
             dataVersion: _dataVersion, // Pass the signal
+            onOpenPapers: () => _tabController.animateTo(3), // Essentials
           ),
           ServiceHistoryTab(vehicleId: widget.vehicleId),
           ExpensesTab(vehicleId: widget.vehicleId),

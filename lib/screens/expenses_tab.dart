@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart';
 import '../service/settings_provider.dart';
+import '../utils/formatters.dart';
 import '../widgets/common_popup.dart';
 
 enum ExpenseGrouping { byDate, byCategory }
@@ -229,7 +230,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: settings.primaryColor,
-                foregroundColor: Colors.white,
+                foregroundColor: settings.onPrimaryColor,
               ),
               child: const Text('Save'),
             ),
@@ -434,7 +435,10 @@ class _ExpensesTabState extends State<ExpensesTab> {
                                         ),
                                       ),
                                       Text(
-                                        '${settings.currencySymbol}${groupTotal.toStringAsFixed(2)}',
+                                        Fmt.money(
+                                          groupTotal,
+                                          settings.currencySymbol,
+                                        ),
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 14,
@@ -465,10 +469,13 @@ class _ExpensesTabState extends State<ExpensesTab> {
           _showAddExpenseDialog(settings, expense: null);
         },
         backgroundColor: primaryColor,
-        icon: const Icon(Icons.add, color: Colors.white),
-        label: const Text(
+        icon: Icon(Icons.add, color: SettingsProvider.contrastOn(primaryColor)),
+        label: Text(
           "Add Expense",
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: SettingsProvider.contrastOn(primaryColor),
+            fontWeight: FontWeight.bold,
+          ),
         ),
       ),
     );
@@ -536,7 +543,7 @@ class _ExpensesTabState extends State<ExpensesTab> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        date,
+                        Fmt.date(date),
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey.shade500,
@@ -562,7 +569,10 @@ class _ExpensesTabState extends State<ExpensesTab> {
                   ),
                 ),
                 Text(
-                  '${settings.currencySymbol}${expense[DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                  Fmt.money(
+                    expense[DatabaseHelper.columnTotalCost] as num?,
+                    settings.currencySymbol,
+                  ),
                   style: TextStyle(
                     color: Colors.green.shade600,
                     fontWeight: FontWeight.bold,

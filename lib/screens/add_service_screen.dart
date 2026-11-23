@@ -7,6 +7,14 @@ import '../service/notification_service.dart'; // Add this line
 import '../widgets/full_screen_photo_viewer.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart'; // Make sure this path is correct
+import '../service/file_storage.dart';
+import '../utils/formatters.dart';
+
+/// Digits with an optional decimal part (up to 2 places). Blocks "-" and ","
+/// that the number keyboard offers.
+final _decimalInput = FilteringTextInputFormatter.allow(
+  RegExp(r'^\d*\.?\d{0,2}'),
+);
 
 // --- (UPDATED HELPER CLASS) ---
 class ServiceItem {
@@ -24,11 +32,19 @@ class ServiceItem {
     this.templateId,
   }) {
     nameController.text = name;
-    // --- FIX 1: Show "1" instead of "1.0" ---
-    qtyController.text = qty.toStringAsFixed(0);
-    // --- FIX 2: Show "0" instead of "0.0" ---
-    costController.text = cost.toStringAsFixed(0);
+    // "1" instead of "1.0", but keep real decimals: 249.5 must not become 250.
+    qtyController.text = Fmt.editable(qty);
+    costController.text = Fmt.editable(cost);
   }
+
+  /// Blank quantity means 1, both for the shown total and when saving.
+  double get parsedQty {
+    final text = qtyController.text.trim();
+    if (text.isEmpty) return 1.0;
+    return double.tryParse(text) ?? 1.0;
+  }
+
+  double get parsedCost => double.tryParse(costController.text.trim()) ?? 0.0;
 
   void dispose() {
     nameController.dispose();
@@ -74,12 +90,21 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
   final ImagePicker _picker = ImagePicker();
   final List<XFile> _newImageFiles = [];
   List<Map<String, dynamic>> _existingPhotos = [];
+  // Existing photos the user removed; deleted only when the form is saved.
+  final Set<int> _removedPhotoIds = {};
 
   // (State for Loading/Editing)
   bool _isEditMode = false;
   bool _isLoading = true;
   bool _isLoadingVendors = true;
   bool _isLoadingTemplates = true;
+  bool _isSaving = false;
+  // True once the user changed something; leaving then asks first.
+  bool _isDirty = false;
+
+  void _markDirty() {
+    if (!_isDirty) setState(() => _isDirty = true);
+  }
 
   @override
   void initState() {
@@ -102,6 +127,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     // (This function is unchanged)
     final vendors = await dbHelper.queryAllVendors();
     final templates = await dbHelper.queryAllServiceTemplates();
+    if (!mounted) return;
     setState(() {
       _allVendors = vendors;
       _allTemplates = templates;
@@ -118,11 +144,16 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       dbHelper.queryServiceItems(widget.serviceId!),
       dbHelper.queryPhotosForParent(widget.serviceId!, 'service'),
     ]);
+    if (!mounted) return;
     final service = data[0] as Map<String, dynamic>?;
     final items = data[1] as List<Map<String, dynamic>>;
     _existingPhotos = List.from(data[2] as List<Map<String, dynamic>>);
     if (service == null) {
-      /* (Error handling) */
+      // Deleted elsewhere: don't leave the spinner running forever.
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('This service no longer exists.')),
+      );
+      Navigator.of(context).pop();
       return;
     }
     _serviceNameController.text =
@@ -142,8 +173,10 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         _serviceItems.add(
           ServiceItem(
             name: item[DatabaseHelper.columnName],
-            qty: (item[DatabaseHelper.columnQty] as num).toDouble(),
-            cost: (item[DatabaseHelper.columnUnitCost] as num).toDouble(),
+            qty: (item[DatabaseHelper.columnQty] as num?)?.toDouble() ?? 1.0,
+            cost:
+                (item[DatabaseHelper.columnUnitCost] as num?)?.toDouble() ??
+                0.0,
             templateId: item[DatabaseHelper.columnTemplateId],
           ),
         );
@@ -166,6 +199,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     if (pickedDate != null) {
       setState(() {
         _dateController.text = pickedDate.toIso8601String().split('T')[0];
+        _isDirty = true;
       });
     }
   }
@@ -180,6 +214,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       if (pickedFile != null) {
         setState(() {
           _newImageFiles.add(pickedFile);
+          _isDirty = true;
         });
       }
     } catch (e) {
@@ -197,6 +232,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     );
     _selectedTemplateId = null;
     setState(() {
+      _isDirty = true;
       if (_serviceItems.length == 1 &&
           _serviceItems[0].nameController.text.isEmpty) {
         _serviceItems[0].nameController.text =
@@ -222,149 +258,29 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
     // (This function is unchanged)
     double total = 0.0;
     for (var item in _serviceItems) {
-      final qty = double.tryParse(item.qtyController.text) ?? 0.0;
-      final cost = double.tryParse(item.costController.text) ?? 0.0;
-      total += qty * cost;
+      // Same qty/cost rules as when saving, so the total always matches.
+      total += item.parsedQty * item.parsedCost;
     }
     setState(() {
       _totalCostController.text = total.toStringAsFixed(2);
     });
   }
 
-  // --- SAVE FUNCTION (unchanged) ---
-  // Future<void> _saveService() async {
-  //   print(
-  //     "[DEBUG] Save button pressed. Service Name is: '${_serviceNameController.text}'",
-  //   );
-  //   if (_formKey.currentState!.validate()) {
-  //     _updateTotalCost(); // Recalculate total
-
-  //     Map<String, dynamic> serviceRow = {
-  //       DatabaseHelper.columnVehicleId: widget.vehicleId,
-  //       DatabaseHelper.columnServiceName: _serviceNameController.text,
-  //       DatabaseHelper.columnServiceDate: _dateController.text,
-  //       DatabaseHelper.columnOdometer: int.tryParse(_odometerController.text),
-  //       DatabaseHelper.columnTotalCost: double.tryParse(
-  //         _totalCostController.text,
-  //       ),
-  //       DatabaseHelper.columnVendorId: _selectedVendorId,
-  //       DatabaseHelper.columnNotes: _notesController.text,
-  //     };
-  //     int serviceId;
-
-  //     if (_isEditMode) {
-  //       serviceId = widget.serviceId!;
-  //       serviceRow[DatabaseHelper.columnId] = serviceId;
-  //       await dbHelper.updateService(serviceRow);
-  //     } else {
-  //       serviceId = await dbHelper.insertService(serviceRow);
-  //     }
-
-  //     // --- 2. DELETE AND RE-SAVE ALL ITEMS ---
-  //     await dbHelper.deleteAllServiceItemsForService(serviceId);
-  //     List<int> templateIdsUsed =
-  //         []; // This is the list of templates in *this* service
-
-  //     for (var item in _serviceItems) {
-  //       String name = item.nameController.text;
-  //       if (name.isNotEmpty) {
-  //         double qty = double.tryParse(item.qtyController.text) ?? 1.0;
-  //         double cost = double.tryParse(item.costController.text) ?? 0.0;
-  //         Map<String, dynamic> itemRow = {
-  //           DatabaseHelper.columnServiceId: serviceId,
-  //           DatabaseHelper.columnName: name,
-  //           DatabaseHelper.columnQty: qty,
-  //           DatabaseHelper.columnUnitCost: cost,
-  //           DatabaseHelper.columnTotalCost: (qty * cost),
-  //           DatabaseHelper.columnTemplateId: item.templateId,
-  //         };
-  //         await dbHelper.insertServiceItem(itemRow);
-  //         if (item.templateId != null) {
-  //           templateIdsUsed.add(item.templateId!);
-  //         }
-  //       }
-  //     }
-
-  //     int newOdometer = int.tryParse(_odometerController.text) ?? 0;
-  //     if (newOdometer > widget.currentOdometer) {
-  //       await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
-  //     }
-
-  //     // --- 3. "AUTO-COMPLETE" AND CREATE REMINDERS (THE CORRECT LOGIC) ---
-  //     // This new logic only touches reminders for templates
-  //     // that are part of this service.
-
-  //     if (templateIdsUsed.isNotEmpty) {
-  //       print(
-  //         "Auto-completing and creating ${templateIdsUsed.length} new reminders...",
-  //       );
-
-  //       for (int templateId in templateIdsUsed.toSet()) {
-  //         // 1. "AUTO-COMPLETE": Delete any old, pending reminder for this template.
-  //         print(
-  //           "  > Deleting old reminder for template $templateId (if one exists)...",
-  //         );
-  //         await dbHelper.deleteRemindersByTemplate(
-  //           widget.vehicleId,
-  //           templateId,
-  //         );
-
-  //         // 2. "CREATE NEW": Add the new reminder with the calculated due date.
-  //         final template = await dbHelper.queryTemplateById(templateId);
-  //         if (template != null) {
-  //           int? intervalDays = template[DatabaseHelper.columnIntervalDays];
-  //           int? intervalKm = template[DatabaseHelper.columnIntervalKm];
-  //           String? nextDueDate;
-  //           int? nextDueOdometer;
-
-  //           if (intervalDays != null && intervalDays >= 0) {
-  //             // Use >=
-  //             DateTime serviceDate = DateTime.parse(_dateController.text);
-  //             nextDueDate = serviceDate
-  //                 .add(Duration(days: intervalDays))
-  //                 .toIso8601String()
-  //                 .split('T')[0];
-  //           }
-  //           if (intervalKm != null && intervalKm > 0) {
-  //             nextDueOdometer = newOdometer + intervalKm;
-  //           }
-  //           if (nextDueDate != null || nextDueOdometer != null) {
-  //             print("  > Creating new reminder for template $templateId");
-
-  //             await dbHelper.insertReminder({
-  //               DatabaseHelper.columnVehicleId: widget.vehicleId,
-  //               DatabaseHelper.columnTemplateId: templateId,
-  //               DatabaseHelper.columnDueDate: nextDueDate,
-  //               DatabaseHelper.columnDueOdometer: nextDueOdometer,
-  //             });
-
-  //             // We are not scheduling notifications, the background task will.
-  //           }
-  //         }
-  //       }
-  //     }
-  //     print("--- REMINDER SYNC COMPLETE ---");
-  //     // --- END OF NEW LOGIC ---
-
-  //     // ... (Save Photos logic) ...
-  //     for (var imageFile in _newImageFiles) {
-  //       await dbHelper.insertPhoto({
-  //         DatabaseHelper.columnParentId: serviceId,
-  //         DatabaseHelper.columnParentType: 'service',
-  //         DatabaseHelper.columnUri: imageFile.path,
-  //       });
-  //     }
-
-  //     if (mounted) {
-  //       Navigator.of(context).pop();
-  //     }
-  //   }
-  // }
-
   Future<void> _saveService() async {
-    if (_formKey.currentState!.validate()) {
-      _updateTotalCost();
-      Map<String, dynamic> serviceRow = {
+    // Ignore extra taps while a save is running (prevented duplicates).
+    if (_isSaving) return;
+    if (!_formKey.currentState!.validate()) return;
+
+    _updateTotalCost();
+    setState(() => _isSaving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final unitType = Provider.of<SettingsProvider>(
+      context,
+      listen: false,
+    ).unitType;
+
+    try {
+      final Map<String, dynamic> serviceRow = {
         DatabaseHelper.columnVehicleId: widget.vehicleId,
         DatabaseHelper.columnServiceName: _serviceNameController.text,
         DatabaseHelper.columnServiceDate: _dateController.text,
@@ -376,136 +292,82 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
         DatabaseHelper.columnNotes: _notesController.text,
       };
 
-      int serviceId;
-      if (_isEditMode) {
-        serviceId = widget.serviceId!;
-        serviceRow[DatabaseHelper.columnId] = serviceId;
-        await dbHelper.updateService(serviceRow);
-      } else {
-        serviceId = await dbHelper.insertService(serviceRow);
-      }
-
-      // --- 1. RESET ALL REMINDERS LINKED TO THIS SERVICE ---
-      // This is the "un-complete" step you wanted!
-      print("--- STARTING REMINDER SYNC ---");
-      print(
-        "  > [EDIT]: Un-completing any reminders previously completed by service $serviceId",
-      );
-      await dbHelper.uncompleteRemindersByService(serviceId);
-
-      // 2. Delete all reminders CREATED BY this service (we will re-create them)
-      print("  > [EDIT]: Deleting all reminders created by service $serviceId");
-      await dbHelper.deleteRemindersByService(serviceId);
-
-      // 3. Delete and re-save all parts (unchanged)
-      await dbHelper.deleteAllServiceItemsForService(serviceId);
-      List<int> newTemplateIdsUsed =
-          []; // Get list of templates *now* in this service
-
-      for (var item in _serviceItems) {
-        String name = item.nameController.text;
-        if (name.isNotEmpty) {
-          double qty = double.tryParse(item.qtyController.text) ?? 1.0;
-          double cost = double.tryParse(item.costController.text) ?? 0.0;
-          Map<String, dynamic> itemRow = {
-            DatabaseHelper.columnServiceId: serviceId,
-            DatabaseHelper.columnName: name,
-            DatabaseHelper.columnQty: qty,
-            DatabaseHelper.columnUnitCost: cost,
-            DatabaseHelper.columnTotalCost: (qty * cost),
-            DatabaseHelper.columnTemplateId: item.templateId,
-          };
-          await dbHelper.insertServiceItem(itemRow);
-          if (item.templateId != null) {
-            newTemplateIdsUsed.add(item.templateId!);
-          }
-        }
-      }
-
-      int newOdometer = int.tryParse(_odometerController.text) ?? 0;
-      if (newOdometer > widget.currentOdometer) {
-        await dbHelper.updateVehicleOdometer(widget.vehicleId, newOdometer);
-      }
-
-      // 4. For each part, complete old reminders and create new ones
-      final newTemplateIdSet = newTemplateIdsUsed.toSet();
-      print(
-        "  > [SAVE]: Found ${newTemplateIdSet.length} templates in this service.",
-      );
-
-      if (newTemplateIdSet.isNotEmpty) {
-        for (int templateId in newTemplateIdSet) {
-          // 4a. "AUTO-COMPLETE": Mark any old 'pending' reminders as 'completed'
-          print(
-            "  > [SAVE]: Completing old 'pending' reminders for template $templateId...",
-          );
-          await dbHelper.completeRemindersByTemplate(
-            widget.vehicleId,
-            templateId,
-            serviceId,
-          );
-
-          // 4b. "CREATE NEW": Add the new 'pending' reminder for the future
-          final template = await dbHelper.queryTemplateById(templateId);
-          if (template != null) {
-            int? intervalDays = template[DatabaseHelper.columnIntervalDays];
-            int? intervalKm = template[DatabaseHelper.columnIntervalKm];
-            String? nextDueDate;
-            int? nextDueOdometer;
-
-            if (intervalDays != null && intervalDays >= 0) {
-              DateTime serviceDate = DateTime.parse(_dateController.text);
-              nextDueDate = serviceDate
-                  .add(Duration(days: intervalDays))
-                  .toIso8601String()
-                  .split('T')[0];
-            }
-            if (intervalKm != null && intervalKm > 0) {
-              nextDueOdometer = newOdometer + intervalKm;
-            }
-            if (nextDueDate != null || nextDueOdometer != null) {
-              print(
-                "  > [SAVE]: Creating new reminder for template $templateId",
-              );
-
-              await dbHelper.insertReminder({
-                DatabaseHelper.columnVehicleId: widget.vehicleId,
-                DatabaseHelper.columnServiceId:
-                    serviceId, // Link to this service
-                DatabaseHelper.columnTemplateId: templateId,
-                DatabaseHelper.columnDueDate: nextDueDate,
-                DatabaseHelper.columnDueOdometer: nextDueOdometer,
-                DatabaseHelper.columnStatus: 'pending', // <-- NEW
-              });
-            }
-          }
-        }
-      }
-      print("--- REMINDER SYNC COMPLETE ---");
-
-      // (Save Photos logic is unchanged)
-      for (var imageFile in _newImageFiles) {
-        await dbHelper.insertPhoto({
-          DatabaseHelper.columnParentId: serviceId,
-          DatabaseHelper.columnParentType: 'service',
-          DatabaseHelper.columnUri: imageFile.path,
+      final List<Map<String, dynamic>> items = [];
+      for (final item in _serviceItems) {
+        final name = item.nameController.text;
+        if (name.isEmpty) continue;
+        final qty = item.parsedQty;
+        final cost = item.parsedCost;
+        items.add({
+          DatabaseHelper.columnName: name,
+          DatabaseHelper.columnQty: qty,
+          DatabaseHelper.columnUnitCost: cost,
+          DatabaseHelper.columnTotalCost: qty * cost,
+          DatabaseHelper.columnTemplateId: item.templateId,
         });
       }
 
-      if (mounted) {
-        // --- TRIGGER REAL-TIME NOTIFICATIONS ---
-        // Helpful if this service update pushes other unrelated reminders into "overdue" status
-        final int currentOdo = int.tryParse(_odometerController.text) ?? 0;
-        final settings = Provider.of<SettingsProvider>(context, listen: false);
-
-        await NotificationService().checkAndShowOdometerReminders(
-          vehicleId: widget.vehicleId,
-          currentOdometer: currentOdo,
-          unitType: settings.unitType,
+      // Copy bill photos out of the picker's cache into app storage first.
+      final List<String> photoPaths = [];
+      for (final file in _newImageFiles) {
+        photoPaths.add(
+          await FileStorage.importFile(file.path, FileStorage.photosFolder),
         );
-
-        Navigator.of(context).pop();
       }
+
+      // Service, parts, reminders and photos are saved together: either all
+      // of it is written or none of it.
+      await dbHelper.saveServiceWithItems(
+        serviceId: _isEditMode ? widget.serviceId : null,
+        serviceRow: serviceRow,
+        items: items,
+        newPhotoPaths: photoPaths,
+      );
+      await dbHelper.deletePhotosByIds(_removedPhotoIds);
+
+      // Show alerts this new odometer reading may have triggered.
+      await NotificationService().checkAndShowOdometerReminders(
+        vehicleId: widget.vehicleId,
+        currentOdometer: int.tryParse(_odometerController.text) ?? 0,
+        unitType: unitType,
+      );
+
+      if (!mounted) return;
+      _isDirty = false;
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) setState(() => _isSaving = false);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not save the service: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Asks before throwing away unsaved changes.
+  Future<void> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text('Your changes to this service will be lost.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Discard', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      _isDirty = false;
+      Navigator.of(context).pop();
     }
   }
 
@@ -565,265 +427,287 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      appBar: AppBar(
-        systemOverlayStyle: isDark
-            ? SystemUiOverlayStyle.light
-            : SystemUiOverlayStyle.dark,
-        title: Text(
-          _isEditMode ? 'Edit Service' : 'Add Service Record',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+    return PopScope(
+      // Back with unsaved changes asks first instead of losing the entry.
+      canPop: !_isDirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_isSaving) _confirmDiscard();
+      },
+      child: Scaffold(
+        backgroundColor: isDark ? Colors.black : Colors.white,
+        appBar: AppBar(
+          systemOverlayStyle: isDark
+              ? SystemUiOverlayStyle.light
+              : SystemUiOverlayStyle.dark,
+          title: Text(
+            _isEditMode ? 'Edit Service' : 'Add Service Record',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          foregroundColor: isDark ? Colors.white : Colors.black,
+          centerTitle: true,
         ),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: isDark ? Colors.white : Colors.black,
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSectionHeader("Service Details", isDark),
-                    const SizedBox(height: 16),
+        body: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                child: Form(
+                  key: _formKey,
+                  onChanged: _markDirty,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader("Service Details", isDark),
+                      const SizedBox(height: 16),
 
-                    // --- SERVICE NAME ---
-                    TextFormField(
-                      controller: _serviceNameController,
-                      decoration: modernInputDecoration(
-                        "Service Name",
-                        Icons.build,
+                      // --- SERVICE NAME ---
+                      TextFormField(
+                        controller: _serviceNameController,
+                        decoration: modernInputDecoration(
+                          "Service Name",
+                          Icons.build,
+                        ),
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? 'Required'
+                            : null,
                       ),
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // --- DATE & ODOMETER ---
-                    Row(
-                      children: [
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: _pickDate,
-                            child: AbsorbPointer(
-                              child: TextFormField(
-                                controller: _dateController,
-                                decoration: modernInputDecoration(
-                                  "Date",
-                                  Icons.calendar_today,
-                                ),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty)
-                                    ? 'Required'
-                                    : null,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: TextFormField(
-                            controller: _odometerController,
-                            decoration: modernInputDecoration(
-                              "Odometer",
-                              Icons.speed,
-                              suffixText: settings.unitType,
-                            ),
-                            keyboardType: TextInputType.number,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.digitsOnly,
-                            ],
-                            validator: (value) =>
-                                (value == null || value.isEmpty)
-                                ? 'Required'
-                                : null,
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 32),
-                    _buildSectionHeader("Parts & Cost", isDark),
-                    const SizedBox(height: 16),
-
-                    // --- PARTS SELECTION ---
-                    _isLoadingTemplates
-                        ? const Center(child: CircularProgressIndicator())
-                        : Row(
-                            children: [
-                              Expanded(
-                                child: DropdownButtonFormField<int>(
-                                  value: _selectedTemplateId,
+                      // --- DATE & ODOMETER ---
+                      Row(
+                        children: [
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: _pickDate,
+                              child: AbsorbPointer(
+                                child: TextFormField(
+                                  controller: _dateController,
                                   decoration: modernInputDecoration(
-                                    "Add from Auto Parts",
-                                    Icons.build_circle,
+                                    "Date",
+                                    Icons.calendar_today,
                                   ),
-                                  items: availableTemplates.map((template) {
-                                    return DropdownMenuItem<int>(
-                                      value: template[DatabaseHelper.columnId],
-                                      child: Text(
-                                        template[DatabaseHelper.columnName],
-                                      ),
-                                    );
-                                  }).toList(),
-                                  onChanged: (int? newId) {
-                                    setState(() {
-                                      _selectedTemplateId = newId;
-                                    });
-                                  },
+                                  validator: (value) =>
+                                      (value == null || value.isEmpty)
+                                      ? 'Required'
+                                      : null,
                                 ),
                               ),
-                              const SizedBox(width: 8),
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: primaryColor.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: IconButton(
-                                  icon: Icon(Icons.add, color: primaryColor),
-                                  onPressed: _addPartFromTemplate,
-                                ),
+                            ),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: TextFormField(
+                              controller: _odometerController,
+                              decoration: modernInputDecoration(
+                                "Odometer",
+                                Icons.speed,
+                                suffixText: settings.unitType,
                               ),
-                            ],
+                              keyboardType: TextInputType.number,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.digitsOnly,
+                              ],
+                              validator: (value) =>
+                                  (value == null || value.isEmpty)
+                                  ? 'Required'
+                                  : null,
+                            ),
                           ),
-                    const SizedBox(height: 16),
+                        ],
+                      ),
 
-                    // --- SERVICE ITEMS LIST ---
-                    ..._serviceItems.asMap().entries.map((entry) {
-                      return _buildServiceItemRow(
-                        entry.value,
-                        entry.key,
-                        isDark,
-                        primaryColor,
-                        settings.currencySymbol,
-                      );
-                    }),
+                      const SizedBox(height: 32),
+                      _buildSectionHeader("Parts & Cost", isDark),
+                      const SizedBox(height: 16),
 
-                    const SizedBox(height: 16),
-                    // Add Manual Item Button
-                    Center(
-                      child: TextButton.icon(
-                        icon: Icon(Icons.add, color: primaryColor),
-                        label: Text(
-                          'Add Manual Item',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: primaryColor,
-                            fontWeight: FontWeight.bold,
+                      // --- PARTS SELECTION ---
+                      _isLoadingTemplates
+                          ? const Center(child: CircularProgressIndicator())
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: DropdownButtonFormField<int>(
+                                    value: _selectedTemplateId,
+                                    decoration: modernInputDecoration(
+                                      "Add from Auto Parts",
+                                      Icons.build_circle,
+                                    ),
+                                    items: availableTemplates.map((template) {
+                                      return DropdownMenuItem<int>(
+                                        value:
+                                            template[DatabaseHelper.columnId],
+                                        child: Text(
+                                          template[DatabaseHelper.columnName],
+                                        ),
+                                      );
+                                    }).toList(),
+                                    onChanged: (int? newId) {
+                                      setState(() {
+                                        _selectedTemplateId = newId;
+                                      });
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Container(
+                                  decoration: BoxDecoration(
+                                    color: primaryColor.withOpacity(0.1),
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: IconButton(
+                                    icon: Icon(Icons.add, color: primaryColor),
+                                    onPressed: _addPartFromTemplate,
+                                  ),
+                                ),
+                              ],
+                            ),
+                      const SizedBox(height: 16),
+
+                      // --- SERVICE ITEMS LIST ---
+                      ..._serviceItems.asMap().entries.map((entry) {
+                        return _buildServiceItemRow(
+                          entry.value,
+                          entry.key,
+                          isDark,
+                          primaryColor,
+                          settings.currencySymbol,
+                        );
+                      }),
+
+                      const SizedBox(height: 16),
+                      // Add Manual Item Button
+                      Center(
+                        child: TextButton.icon(
+                          icon: Icon(Icons.add, color: primaryColor),
+                          label: Text(
+                            'Add Manual Item',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: primaryColor,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
+                          onPressed: () {
+                            setState(() {
+                              _serviceItems.add(ServiceItem());
+                              _isDirty = true;
+                            });
+                          },
                         ),
-                        onPressed: () {
-                          setState(() {
-                            _serviceItems.add(ServiceItem());
-                          });
-                        },
                       ),
-                    ),
 
-                    const SizedBox(height: 16),
-                    // --- TOTAL COST ---
-                    TextFormField(
-                      controller: _totalCostController,
-                      decoration:
-                          modernInputDecoration(
-                            "Total Cost",
-                            Icons.attach_money, // Or generic money icon
-                          ).copyWith(
-                            prefixIcon: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Text(
-                                settings.currencySymbol,
-                                style: TextStyle(
-                                  fontSize: 20,
-                                  fontWeight: FontWeight.bold,
-                                  color: primaryColor,
+                      const SizedBox(height: 16),
+                      // --- TOTAL COST ---
+                      TextFormField(
+                        controller: _totalCostController,
+                        decoration:
+                            modernInputDecoration(
+                              "Total Cost",
+                              Icons.attach_money, // Or generic money icon
+                            ).copyWith(
+                              prefixIcon: Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: Text(
+                                  settings.currencySymbol,
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: primaryColor,
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
-                      readOnly: true,
-                    ),
-
-                    const SizedBox(height: 32),
-                    _buildSectionHeader("Workshop & Notes", isDark),
-                    const SizedBox(height: 16),
-
-                    // --- VENDOR ---
-                    _isLoadingVendors
-                        ? const Center(child: CircularProgressIndicator())
-                        : DropdownButtonFormField<int>(
-                            value: _selectedVendorId,
-                            decoration: modernInputDecoration(
-                              "Workshop / Garage",
-                              Icons.store,
-                            ),
-                            items: _allVendors.map((vendor) {
-                              return DropdownMenuItem<int>(
-                                value: vendor[DatabaseHelper.columnId],
-                                child: Text(vendor[DatabaseHelper.columnName]),
-                              );
-                            }).toList(),
-                            onChanged: (int? newValue) {
-                              setState(() => _selectedVendorId = newValue);
-                            },
-                          ),
-                    const SizedBox(height: 16),
-
-                    // --- NOTES ---
-                    TextFormField(
-                      controller: _notesController,
-                      decoration: modernInputDecoration(
-                        "Notes (Optional)",
-                        Icons.notes,
+                        readOnly: true,
                       ),
-                      maxLines: 3,
-                    ),
 
-                    const SizedBox(height: 32),
-                    _buildSectionHeader("Upload Bill", isDark),
-                    const SizedBox(height: 16),
-                    _buildPhotoPicker(isDark, primaryColor),
-                  ],
+                      const SizedBox(height: 32),
+                      _buildSectionHeader("Workshop & Notes", isDark),
+                      const SizedBox(height: 16),
+
+                      // --- VENDOR ---
+                      _isLoadingVendors
+                          ? const Center(child: CircularProgressIndicator())
+                          : DropdownButtonFormField<int>(
+                              value: _selectedVendorId,
+                              decoration: modernInputDecoration(
+                                "Workshop / Garage",
+                                Icons.store,
+                              ),
+                              items: _allVendors.map((vendor) {
+                                return DropdownMenuItem<int>(
+                                  value: vendor[DatabaseHelper.columnId],
+                                  child: Text(
+                                    vendor[DatabaseHelper.columnName],
+                                  ),
+                                );
+                              }).toList(),
+                              onChanged: (int? newValue) {
+                                setState(() => _selectedVendorId = newValue);
+                              },
+                            ),
+                      const SizedBox(height: 16),
+
+                      // --- NOTES ---
+                      TextFormField(
+                        controller: _notesController,
+                        decoration: modernInputDecoration(
+                          "Notes (Optional)",
+                          Icons.notes,
+                        ),
+                        maxLines: 3,
+                      ),
+
+                      const SizedBox(height: 32),
+                      _buildSectionHeader("Upload Bill", isDark),
+                      const SizedBox(height: 16),
+                      _buildPhotoPicker(isDark, primaryColor),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // --- STICKY BOTTOM BUTTON ---
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+            // --- STICKY BOTTOM BUTTON ---
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
                     ),
-                    elevation: 4,
-                  ),
-                  onPressed: _saveService,
-                  child: Text(
-                    _isEditMode ? 'UPDATE SERVICE' : 'SAVE SERVICE',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                    onPressed: _isSaving ? null : _saveService,
+                    child: _isSaving
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: settings.onPrimaryColor,
+                            ),
+                          )
+                        : Text(
+                            _isEditMode ? 'UPDATE SERVICE' : 'SAVE SERVICE',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: settings.onPrimaryColor,
+                            ),
+                          ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -892,9 +776,18 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             flex: 1,
             child: TextFormField(
               controller: item.qtyController,
-              decoration: itemDecoration(""),
-              keyboardType: TextInputType.number,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              decoration: itemDecoration("Qty"),
+              // Decimals allowed (e.g. 3.5 L of oil). Blank counts as 1.
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: [_decimalInput],
+              validator: (val) {
+                final text = val?.trim() ?? '';
+                if (text.isEmpty) return null;
+                final qty = double.tryParse(text);
+                return (qty == null || qty <= 0) ? '>0' : null;
+              },
               onChanged: (_) => _updateTotalCost(),
             ),
           ),
@@ -909,6 +802,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
               keyboardType: const TextInputType.numberWithOptions(
                 decimal: true,
               ),
+              inputFormatters: [_decimalInput],
               onTap: () {
                 if (item.costController.text == '0') {
                   item.costController.clear();
@@ -922,6 +816,7 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
             onPressed: () {
               setState(() {
+                _isDirty = true;
                 if (_serviceItems.length > 1) {
                   item.dispose();
                   _serviceItems.removeAt(index);
@@ -987,10 +882,12 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
                   ),
                 );
               },
-              () async {
-                await dbHelper.deletePhoto(photo[DatabaseHelper.columnId]);
+              () {
+                // Deleted when the form is saved, so Back/Discard keeps it.
                 setState(() {
+                  _removedPhotoIds.add(photo[DatabaseHelper.columnId] as int);
                   _existingPhotos.removeAt(index);
+                  _isDirty = true;
                 });
               },
             );
@@ -1024,7 +921,13 @@ class _AddServiceScreenState extends State<AddServiceScreen> {
             margin: const EdgeInsets.only(right: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              image: DecorationImage(image: FileImage(file), fit: BoxFit.cover),
+              color: Colors.grey.shade300,
+              image: DecorationImage(
+                // Decode at thumbnail size instead of the full 1024px photo.
+                image: ResizeImage(FileImage(file), width: 240),
+                fit: BoxFit.cover,
+                onError: (_, _) {},
+              ),
             ),
           ),
         ),

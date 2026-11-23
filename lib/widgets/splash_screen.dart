@@ -16,88 +16,15 @@ import 'package:workmanager/workmanager.dart';
 @pragma('vm:entry-point')
 void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
-    final dbHelper = DatabaseHelper.instance;
-    await dbHelper.database;
-    await NotificationService().initialize();
-
-    final String today = DateTime.now().toIso8601String().split('T')[0];
-    if (kDebugMode) {
-      print("Checking for reminders and papers due on: $today");
+    try {
+      await DatabaseHelper.instance.database;
+      await NotificationService().initialize();
+      // Service reminders (date and odometer, with advance warnings) and
+      // paper expiry warnings. See NotificationService for the rules.
+      await NotificationService().checkAllReminders();
+    } catch (e) {
+      if (kDebugMode) print("Background reminder task failed: $e");
     }
-
-    // --- 1. Check for Service Reminders ---
-    final allReminders = await dbHelper.queryAllPendingRemindersWithVehicle();
-
-    for (final reminder in allReminders) {
-      final int reminderId = reminder[DatabaseHelper.columnId];
-      bool isDue = false;
-
-      // Check if date is due
-      final String? dueDate = reminder[DatabaseHelper.columnDueDate];
-      if (dueDate != null && dueDate.compareTo(today) == 0) {
-        // Only on the exact day
-        isDue = true;
-      }
-
-      // Check if odometer is due
-      final int? dueOdo = reminder[DatabaseHelper.columnDueOdometer];
-      final int currentOdo =
-          reminder[DatabaseHelper.columnCurrentOdometer] ?? 0;
-      if (dueOdo != null && currentOdo >= dueOdo) {
-        isDue = true;
-      }
-
-      if (isDue) {
-        final String appName = inputData?['appName'] ?? 'MechMinder';
-        final serviceName =
-            reminder['template_name'] ??
-            reminder[DatabaseHelper.columnNotes] ??
-            'Service';
-        final body = 'Your "$serviceName" service is due!';
-
-        if (kDebugMode) {
-          print(
-            "  > Reminder $serviceName (ID: $reminderId) is DUE. Sending notification.",
-          );
-        }
-
-        await NotificationService().showImmediateReminder(
-          id: reminderId,
-          title: appName,
-          body: body,
-        );
-      }
-    }
-
-    // --- 2. NEW: Check for Expiring Papers ---
-    final expiringPapers = await dbHelper.queryVehiclePapersExpiringOn(today);
-    if (kDebugMode) {
-      print("Found ${expiringPapers.length} papers expiring today.");
-    }
-
-    for (final paper in expiringPapers) {
-      final String vehicleName =
-          '${paper[DatabaseHelper.columnMake]} ${paper[DatabaseHelper.columnModel]}';
-      final String paperType = paper[DatabaseHelper.columnPaperType] ?? 'Paper';
-      final String body = 'Your $paperType for $vehicleName expires today!';
-
-      if (kDebugMode) {
-        print(
-          "  > Paper $paperType (ID: ${paper[DatabaseHelper.columnId]}) is EXPIRING. Sending notification.",
-        );
-      }
-
-      // Use a high-level unique ID for paper notifications
-      int notificationId = 100000 + (paper[DatabaseHelper.columnId] as int);
-
-      await NotificationService().showImmediateReminder(
-        id: notificationId,
-        title: 'Vehicle Paper Expiring',
-        body: body,
-      );
-    }
-    // --- END NEW ---
-
     if (kDebugMode) {
       print("--- Background Task Complete ---");
     }
@@ -135,10 +62,8 @@ class _SplashScreenState extends State<SplashScreen> {
         await DatabaseHelper.instance.database;
         await NotificationService().initialize();
         await NotificationService().requestPermissions();
-        await Workmanager().initialize(
-          callbackDispatcher,
-          isInDebugMode: kDebugMode,
-        );
+        // isInDebugMode was removed: it's deprecated and has no effect.
+        await Workmanager().initialize(callbackDispatcher);
 
         await Workmanager().registerPeriodicTask(
           "1",
@@ -154,6 +79,24 @@ class _SplashScreenState extends State<SplashScreen> {
           print("!!! ERROR DURING APP INIT: $e");
         }
       }
+
+      // Data maintenance from older versions. Each step is independent.
+      try {
+        // Photo rows left behind by deleted vehicles broke restore.
+        await DatabaseHelper.instance.deleteOrphanPhotos();
+      } catch (e) {
+        if (kDebugMode) print("Orphan photo cleanup failed: $e");
+      }
+      try {
+        // Photos used to be saved in the cache, which Android can clear.
+        await DatabaseHelper.instance.moveExternalPhotosToAppStorage();
+      } catch (e) {
+        if (kDebugMode) print("Photo move failed: $e");
+      }
+
+      // Also check reminders on app start, in case Android delayed the
+      // daily background task. Already-shown alerts are not repeated.
+      await NotificationService().checkAllReminders();
     }();
 
     // 3. Wait for BOTH the timer AND your setup to finish

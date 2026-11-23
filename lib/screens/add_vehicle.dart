@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../service/settings_provider.dart'; // Make sure this path is correct
 import '../widgets/full_screen_photo_viewer.dart'; // <-- ADDED
 import '../service/notification_service.dart'; // Add this line
+import '../service/file_storage.dart';
 
 class AddVehicleScreen extends StatefulWidget {
   final int? vehicleId;
@@ -36,10 +37,19 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   final ImagePicker _picker = ImagePicker();
   List<Map<String, dynamic>> _existingPhotos = []; // Photos already saved in DB
   final List<XFile> _newImageFiles = []; // Photos picked in this session
+  // Existing photos the user removed; deleted only when the form is saved.
+  final Set<int> _removedPhotoIds = {};
   // --- END PHOTO STATE ---
 
   bool _isEditMode = false;
   bool _isLoading = true;
+  bool _isSaving = false;
+  // True once the user changed something; leaving then asks first.
+  bool _isDirty = false;
+
+  void _markDirty() {
+    if (!_isDirty) setState(() => _isDirty = true);
+  }
 
   @override
   void initState() {
@@ -77,6 +87,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       ), // <-- FETCH PHOTOS
     ]);
 
+    if (!mounted) return;
     final vehicle = data[0] as Map<String, dynamic>?;
     _existingPhotos = List<Map<String, dynamic>>.from(
       data[1] as List,
@@ -111,6 +122,7 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       if (pickedFile == null) return;
       setState(() {
         _newImageFiles.add(pickedFile);
+        _isDirty = true;
       });
     } catch (e) {
       print("Error picking image: $e");
@@ -118,7 +130,17 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
   }
 
   Future<void> _saveVehicle() async {
-    if (_formKey.currentState!.validate()) {
+    // Ignore extra taps while saving (a double tap created two vehicles).
+    if (_isSaving) return;
+    if (!_formKey.currentState!.validate()) return;
+    setState(() => _isSaving = true);
+    final messenger = ScaffoldMessenger.of(context);
+    final unitType = Provider.of<SettingsProvider>(
+      context,
+      listen: false,
+    ).unitType;
+
+    try {
       Map<String, dynamic> row = {
         DatabaseHelper.columnMake: _makeController.text,
         DatabaseHelper.columnModel: _modelController.text,
@@ -138,39 +160,69 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             int.tryParse(_odometerController.text) ?? 0,
       };
 
-      int vehicleId;
       if (widget.vehicleId != null) {
-        vehicleId = widget.vehicleId!;
-        row[DatabaseHelper.columnId] = vehicleId;
-        await dbHelper.updateVehicle(row);
-      } else {
-        vehicleId = await dbHelper.insertVehicle(row);
+        row[DatabaseHelper.columnId] = widget.vehicleId!;
       }
 
-      // --- PHOTO SAVE LOGIC ---
-      for (var imageFile in _newImageFiles) {
-        await dbHelper.insertPhoto({
-          DatabaseHelper.columnParentId: vehicleId,
-          DatabaseHelper.columnParentType: 'vehicle',
-          DatabaseHelper.columnUri: imageFile.path,
-        });
-      }
-      // --- END PHOTO SAVE LOGIC ---
-
-      if (mounted) {
-        // --- TRIGGER REAL-TIME NOTIFICATIONS ---
-        // We only trigger if the odometer actually changed or is in edit mode
-        final int currentOdo = int.tryParse(_odometerController.text) ?? 0;
-        final settings = Provider.of<SettingsProvider>(context, listen: false);
-
-        await NotificationService().checkAndShowOdometerReminders(
-          vehicleId: vehicleId,
-          currentOdometer: currentOdo,
-          unitType: settings.unitType,
+      // Copy photos out of the picker's cache into app storage, then save
+      // the vehicle and its photos together.
+      final List<String> photoPaths = [];
+      for (final imageFile in _newImageFiles) {
+        photoPaths.add(
+          await FileStorage.importFile(
+            imageFile.path,
+            FileStorage.photosFolder,
+          ),
         );
-
-        Navigator.of(context).pop();
       }
+      final int vehicleId = await dbHelper.saveVehicleWithPhotos(
+        vehicleRow: row,
+        newPhotoPaths: photoPaths,
+      );
+      await dbHelper.deletePhotosByIds(_removedPhotoIds);
+
+      await NotificationService().checkAndShowOdometerReminders(
+        vehicleId: vehicleId,
+        currentOdometer: int.tryParse(_odometerController.text) ?? 0,
+        unitType: unitType,
+      );
+
+      if (!mounted) return;
+      _isDirty = false;
+      Navigator.of(context).pop();
+    } catch (e) {
+      if (mounted) setState(() => _isSaving = false);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text('Could not save the vehicle: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Asks before throwing away unsaved changes.
+  Future<void> _confirmDiscard() async {
+    final discard = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Discard changes?'),
+        content: const Text('Your changes to this vehicle will be lost.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Keep editing'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: const Text('Discard', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (discard == true && mounted) {
+      _isDirty = false;
+      Navigator.of(context).pop();
     }
   }
 
@@ -213,240 +265,265 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
       );
     }
 
-    return Scaffold(
-      backgroundColor: isDark ? Colors.black : Colors.white,
-      appBar: AppBar(
-        systemOverlayStyle: isDark
-            ? SystemUiOverlayStyle.light
-            : SystemUiOverlayStyle.dark,
-        title: Text(
-          _isEditMode ? 'Edit Vehicle' : 'Add New Vehicle',
-          style: const TextStyle(fontWeight: FontWeight.bold),
+    return PopScope(
+      // Back with unsaved changes asks first instead of losing the entry.
+      canPop: !_isDirty,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && !_isSaving) _confirmDiscard();
+      },
+      child: Scaffold(
+        backgroundColor: isDark ? Colors.black : Colors.white,
+        appBar: AppBar(
+          systemOverlayStyle: isDark
+              ? SystemUiOverlayStyle.light
+              : SystemUiOverlayStyle.dark,
+          title: Text(
+            _isEditMode ? 'Edit Vehicle' : 'Add New Vehicle',
+            style: const TextStyle(fontWeight: FontWeight.bold),
+          ),
+          elevation: 0,
+          backgroundColor: Colors.transparent,
+          foregroundColor: isDark ? Colors.white : Colors.black,
+          centerTitle: true,
         ),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: isDark ? Colors.white : Colors.black,
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildSectionHeader("Vehicle Details", isDark),
-                    const SizedBox(height: 16),
+        body: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+                child: Form(
+                  key: _formKey,
+                  onChanged: _markDirty,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildSectionHeader("Vehicle Details", isDark),
+                      const SizedBox(height: 16),
 
-                    // --- ROW 1: BRAND ---
-                    TextFormField(
-                      controller: _makeController,
-                      decoration: modernInputDecoration(
-                        "Company",
-                        Icons.directions_car,
-                      ),
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // --- ROW 2: MODEL ---
-                    TextFormField(
-                      controller: _modelController,
-                      decoration: modernInputDecoration(
-                        "Model",
-                        Icons.directions_car_filled,
-                      ),
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
-
-                    // --- ROW 3: VARIANT & DATE ---
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _variantController,
-                            decoration: modernInputDecoration(
-                              "Variant (Opt)",
-                              Icons.merge_type,
-                            ),
-                          ),
+                      // --- ROW 1: BRAND ---
+                      TextFormField(
+                        controller: _makeController,
+                        decoration: modernInputDecoration(
+                          "Company",
+                          Icons.directions_car,
                         ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: GestureDetector(
-                            onTap: () async {
-                              DateTime? pickedDate = await showDatePicker(
-                                context: context,
-                                initialDate:
-                                    DateTime.tryParse(
-                                      _purchaseDateController.text,
-                                    ) ??
-                                    DateTime.now(),
-                                firstDate: DateTime(1950),
-                                lastDate: DateTime(2101),
-                              );
-                              if (pickedDate != null) {
-                                _purchaseDateController.text = pickedDate
-                                    .toIso8601String()
-                                    .split('T')[0];
-                              }
-                            },
-                            child: AbsorbPointer(
-                              child: TextFormField(
-                                controller: _purchaseDateController,
-                                decoration: modernInputDecoration(
-                                  "Purchase Date",
-                                  Icons.calendar_today,
-                                ),
-                                validator: (value) =>
-                                    (value == null || value.isEmpty)
-                                    ? 'Required'
-                                    : null,
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? 'Required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // --- ROW 2: MODEL ---
+                      TextFormField(
+                        controller: _modelController,
+                        decoration: modernInputDecoration(
+                          "Model",
+                          Icons.directions_car_filled,
+                        ),
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? 'Required'
+                            : null,
+                      ),
+                      const SizedBox(height: 16),
+
+                      // --- ROW 3: VARIANT & DATE ---
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _variantController,
+                              decoration: modernInputDecoration(
+                                "Variant (Opt)",
+                                Icons.merge_type,
                               ),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // --- ROW 4: COLOR & FUEL TYPE ---
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: _colorController,
-                            decoration: modernInputDecoration(
-                              "Color",
-                              Icons.palette,
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: GestureDetector(
+                              onTap: () async {
+                                DateTime? pickedDate = await showDatePicker(
+                                  context: context,
+                                  initialDate:
+                                      DateTime.tryParse(
+                                        _purchaseDateController.text,
+                                      ) ??
+                                      DateTime.now(),
+                                  firstDate: DateTime(1950),
+                                  lastDate: DateTime(2101),
+                                );
+                                if (pickedDate != null) {
+                                  _purchaseDateController.text = pickedDate
+                                      .toIso8601String()
+                                      .split('T')[0];
+                                  _markDirty();
+                                }
+                              },
+                              child: AbsorbPointer(
+                                child: TextFormField(
+                                  controller: _purchaseDateController,
+                                  decoration: modernInputDecoration(
+                                    "Purchase Date",
+                                    Icons.calendar_today,
+                                  ),
+                                  validator: (value) =>
+                                      (value == null || value.isEmpty)
+                                      ? 'Required'
+                                      : null,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 16),
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedFuelType,
-                            decoration: modernInputDecoration(
-                              "Fuel Type",
-                              Icons.local_gas_station,
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+
+                      // --- ROW 4: COLOR & FUEL TYPE ---
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: _colorController,
+                              decoration: modernInputDecoration(
+                                "Color",
+                                Icons.palette,
+                              ),
                             ),
-                            items:
-                                [
-                                      'Petrol',
-                                      'Diesel',
-                                      'Electric',
-                                      'Hybrid',
-                                      'CNG',
-                                    ]
-                                    .map(
-                                      (label) => DropdownMenuItem(
-                                        value: label,
-                                        child: Text(label),
-                                      ),
-                                    )
-                                    .toList(),
-                            onChanged: (val) =>
-                                setState(() => _selectedFuelType = val),
-                            validator: (value) =>
-                                (value == null || value.isEmpty)
-                                ? 'Required'
-                                : null,
                           ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _selectedFuelType,
+                              decoration: modernInputDecoration(
+                                "Fuel Type",
+                                Icons.local_gas_station,
+                              ),
+                              items:
+                                  [
+                                        'Petrol',
+                                        'Diesel',
+                                        'Electric',
+                                        'Hybrid',
+                                        'CNG',
+                                      ]
+                                      .map(
+                                        (label) => DropdownMenuItem(
+                                          value: label,
+                                          child: Text(label),
+                                        ),
+                                      )
+                                      .toList(),
+                              onChanged: (val) =>
+                                  setState(() => _selectedFuelType = val),
+                              validator: (value) =>
+                                  (value == null || value.isEmpty)
+                                  ? 'Required'
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      const SizedBox(height: 32),
+                      _buildSectionHeader("Registration & Owner", isDark),
+                      const SizedBox(height: 16),
+
+                      // --- REG NO ---
+                      TextFormField(
+                        controller: _regNoController,
+                        decoration: modernInputDecoration(
+                          "Registration No.",
+                          Icons.featured_video,
                         ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 32),
-                    _buildSectionHeader("Registration & Owner", isDark),
-                    const SizedBox(height: 16),
-
-                    // --- REG NO ---
-                    TextFormField(
-                      controller: _regNoController,
-                      decoration: modernInputDecoration(
-                        "Registration No.",
-                        Icons.featured_video,
+                        textCapitalization:
+                            TextCapitalization.characters, // Auto-caps
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? 'Required'
+                            : null,
                       ),
-                      textCapitalization:
-                          TextCapitalization.characters, // Auto-caps
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // --- OWNER NAME ---
-                    TextFormField(
-                      controller: _ownerNameController,
-                      decoration: modernInputDecoration(
-                        "Owner Name",
-                        Icons.person,
+                      // --- OWNER NAME ---
+                      TextFormField(
+                        controller: _ownerNameController,
+                        decoration: modernInputDecoration(
+                          "Owner Name",
+                          Icons.person,
+                        ),
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? 'Required'
+                            : null,
                       ),
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Required' : null,
-                    ),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 16),
 
-                    // --- ODOMETER ---
-                    TextFormField(
-                      controller: _odometerController,
-                      decoration: modernInputDecoration(
-                        _isEditMode ? 'Current Odometer' : 'Initial Odometer',
-                        Icons.speed,
-                      ).copyWith(suffixText: settings.unitType),
-                      enabled: !_isEditMode,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      validator: (value) =>
-                          (value == null || value.isEmpty) ? 'Required' : null,
-                    ),
+                      // --- ODOMETER ---
+                      TextFormField(
+                        controller: _odometerController,
+                        decoration: modernInputDecoration(
+                          _isEditMode ? 'Current Odometer' : 'Initial Odometer',
+                          Icons.speed,
+                        ).copyWith(suffixText: settings.unitType),
+                        enabled: !_isEditMode,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.digitsOnly,
+                        ],
+                        validator: (value) => (value == null || value.isEmpty)
+                            ? 'Required'
+                            : null,
+                      ),
 
-                    const SizedBox(height: 32),
-                    _buildSectionHeader("Gallery", isDark),
-                    const SizedBox(height: 16),
+                      const SizedBox(height: 32),
+                      _buildSectionHeader("Gallery", isDark),
+                      const SizedBox(height: 16),
 
-                    // --- MODERN PHOTO PICKER ---
-                    _buildPhotoPicker(isDark, primaryColor),
-                  ],
+                      // --- MODERN PHOTO PICKER ---
+                      _buildPhotoPicker(isDark, primaryColor),
+                    ],
+                  ),
                 ),
               ),
             ),
-          ),
 
-          // --- STICKY BOTTOM BUTTON ---
-          SafeArea(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primaryColor,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+            // --- STICKY BOTTOM BUTTON ---
+            SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: SizedBox(
+                  width: double.infinity,
+                  height: 56,
+                  child: ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: primaryColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      elevation: 4,
                     ),
-                    elevation: 4,
-                  ),
-                  onPressed: _saveVehicle,
-                  child: Text(
-                    _isEditMode ? 'UPDATE VEHICLE' : 'SAVE VEHICLE',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
+                    onPressed: _isSaving ? null : _saveVehicle,
+                    child: _isSaving
+                        ? SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              color: settings.onPrimaryColor,
+                            ),
+                          )
+                        : Text(
+                            _isEditMode ? 'UPDATE VEHICLE' : 'SAVE VEHICLE',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: settings.onPrimaryColor,
+                            ),
+                          ),
                   ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -555,12 +632,14 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
                         ),
                       );
                     },
-                    () async {
-                      await dbHelper.deletePhoto(
-                        photo[DatabaseHelper.columnId],
-                      );
+                    () {
+                      // Deleted when the form is saved, so Back keeps it.
                       setState(() {
+                        _removedPhotoIds.add(
+                          photo[DatabaseHelper.columnId] as int,
+                        );
                         _existingPhotos.removeAt(index);
+                        _isDirty = true;
                       });
                     },
                   );
@@ -600,7 +679,13 @@ class _AddVehicleScreenState extends State<AddVehicleScreen> {
             margin: const EdgeInsets.only(right: 12),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
-              image: DecorationImage(image: FileImage(file), fit: BoxFit.cover),
+              color: Colors.grey.shade300,
+              image: DecorationImage(
+                // Decode at thumbnail size instead of the full photo.
+                image: ResizeImage(FileImage(file), width: 360),
+                fit: BoxFit.cover,
+                onError: (_, _) {},
+              ),
             ),
           ),
         ),

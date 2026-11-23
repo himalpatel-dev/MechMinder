@@ -3,6 +3,7 @@ import '../service/database_helper.dart';
 import 'vehicle_detail.dart';
 import 'package:provider/provider.dart';
 import '../service/settings_provider.dart';
+import '../utils/formatters.dart';
 import 'dart:io';
 import '../widgets/mini_spending_chart.dart'; // Make sure this path is correct
 import 'package:flutter_staggered_animations/flutter_staggered_animations.dart';
@@ -91,7 +92,8 @@ class VehicleListScreenState extends State<VehicleListScreen> {
                 final int? nextOdo = vehicle[DatabaseHelper.columnDueOdometer];
                 if (nextTemplate != null) {
                   if (nextDate != null) {
-                    nextReminderText = 'Next: $nextTemplate (by $nextDate)';
+                    nextReminderText =
+                        'Next: $nextTemplate (by ${Fmt.date(nextDate)})';
                   } else if (nextOdo != null) {
                     nextReminderText =
                         'Next: $nextTemplate (by $nextOdo ${settings.unitType})';
@@ -230,7 +232,7 @@ class VehicleListScreenState extends State<VehicleListScreen> {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${settings.currencySymbol}0 total',
+                                                  '${Fmt.money(0, settings.currencySymbol)} total',
                                                   style: const TextStyle(
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.bold,
@@ -254,7 +256,7 @@ class VehicleListScreenState extends State<VehicleListScreen> {
                                                 ),
                                                 const SizedBox(height: 4),
                                                 Text(
-                                                  '${settings.currencySymbol}${totalSpending.toStringAsFixed(0)} total',
+                                                  '${Fmt.money(totalSpending, settings.currencySymbol)} total',
                                                   style: const TextStyle(
                                                     fontSize: 12,
                                                     fontWeight: FontWeight.bold,

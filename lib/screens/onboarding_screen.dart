@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:introduction_screen/introduction_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -12,8 +13,17 @@ class OnboardingScreen extends StatelessWidget {
   const OnboardingScreen({super.key, this.isFromSettings = false});
 
   Future<void> _onIntroEnd(BuildContext context) async {
-    // 0. Ensure Permission Requested before leaving
-    await Permission.notification.request();
+    // 0. Ensure Permission Requested before leaving.
+    // Skipped on web: local notifications aren't supported there, and the
+    // web plugin throws if the browser has no Notification API. A failure
+    // here must never block finishing onboarding.
+    if (!kIsWeb) {
+      try {
+        await Permission.notification.request();
+      } catch (e) {
+        debugPrint('Notification permission request failed: $e');
+      }
+    }
 
     // 1. Save that we have seen the onboarding
     final prefs = await SharedPreferences.getInstance();

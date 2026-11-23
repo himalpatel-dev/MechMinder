@@ -26,14 +26,16 @@ class _StatsPieChartState extends State<StatsPieChart> {
 
   @override
   Widget build(BuildContext context) {
-    if (widget.spendingData.isEmpty) {
-      return const SizedBox.shrink(); // Don't show anything if no data
-    }
-
     double total = widget.spendingData.fold(
       0.0,
-      (sum, item) => sum + (item['total'] as num),
+      (sum, item) => sum + ((item['total'] as num?) ?? 0),
     );
+
+    // Nothing to draw (and percentages would be NaN) when there's no data or
+    // every total is 0.
+    if (widget.spendingData.isEmpty || total <= 0) {
+      return const SizedBox.shrink();
+    }
 
     return AspectRatio(
       aspectRatio: 1.2,
@@ -101,7 +103,7 @@ class _StatsPieChartState extends State<StatsPieChart> {
       final fontSize = isTouched ? 16.0 : 12.0;
       final radius = isTouched ? 60.0 : 50.0;
       final item = widget.spendingData[i];
-      final double value = (item['total'] as num).toDouble();
+      final double value = ((item['total'] as num?) ?? 0).toDouble();
       final double percentage = (value / totalValue) * 100;
 
       return PieChartSectionData(
@@ -127,7 +129,8 @@ class _StatsPieChartState extends State<StatsPieChart> {
     // will be handled by the theme)
     return List.generate(widget.spendingData.length, (i) {
       final item = widget.spendingData[i];
-      final String category = item[DatabaseHelper.columnCategory];
+      final String category =
+          item[DatabaseHelper.columnCategory] as String? ?? 'Other';
 
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4.0),

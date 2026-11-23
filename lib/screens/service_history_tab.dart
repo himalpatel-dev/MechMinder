@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../service/database_helper.dart';
 import '../service/settings_provider.dart';
+import '../utils/formatters.dart';
 import 'add_service_screen.dart';
 import 'service_detail_screen.dart';
 import 'package:flutter/rendering.dart';
@@ -184,10 +185,16 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
         child: FloatingActionButton.extended(
           onPressed: _navigateToAddService,
           backgroundColor: primaryColor,
-          icon: const Icon(Icons.add, color: Colors.white),
-          label: const Text(
+          icon: Icon(
+            Icons.add,
+            color: SettingsProvider.contrastOn(primaryColor),
+          ),
+          label: Text(
             "Add Service",
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            style: TextStyle(
+              color: SettingsProvider.contrastOn(primaryColor),
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
       ),
@@ -284,7 +291,10 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
                         Text(
-                          '${settings.currencySymbol}${record[DatabaseHelper.columnTotalCost] ?? '0.00'}',
+                          Fmt.money(
+                            record[DatabaseHelper.columnTotalCost] as num?,
+                            settings.currencySymbol,
+                          ),
                           style: TextStyle(
                             color: Colors.green.shade600,
                             fontWeight: FontWeight.bold,
@@ -306,7 +316,7 @@ class _ServiceHistoryTabState extends State<ServiceHistoryTab> {
                   children: [
                     _buildInfoChip(
                       Icons.calendar_today,
-                      record[DatabaseHelper.columnServiceDate],
+                      Fmt.date(record[DatabaseHelper.columnServiceDate]),
                       isDark,
                     ),
                     _buildInfoChip(

@@ -3,7 +3,7 @@ import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
-    id("kotlin-android")
+    // Kotlin is applied by the Flutter Gradle Plugin (see the Flutter template).
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -25,10 +25,6 @@ android {
     isCoreLibraryDesugaringEnabled = true
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
-}
-
-kotlinOptions {
-    jvmTarget = "17"
 }
 
     defaultConfig {
@@ -70,6 +66,12 @@ kotlinOptions {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     implementation("androidx.activity:activity-ktx:1.9.3")
 }
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17
+    }
 }
 
 flutter {

@@ -6,6 +6,7 @@ import '../service/database_helper.dart';
 import '../widgets/stats_pie_chart.dart';
 import '../service/settings_provider.dart';
 import '../service/excel_service.dart';
+import '../utils/formatters.dart';
 
 class StatsTab extends StatefulWidget {
   final int vehicleId;
@@ -72,24 +73,39 @@ class _StatsTabState extends State<StatsTab> {
       endDate = end.toIso8601String().split('T')[0];
     }
 
-    final total = await dbHelper.queryTotalSpending(
-      widget.vehicleId,
-      startDate: startDate,
-      endDate: endDate,
-    );
-    final byCategory = await dbHelper.querySpendingByCategory(
-      widget.vehicleId,
-      startDate: startDate,
-      endDate: endDate,
-    );
-    byCategory.sort((a, b) => (b['total'] as num).compareTo(a['total'] as num));
+    try {
+      final total = await dbHelper.queryTotalSpending(
+        widget.vehicleId,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      final byCategory = await dbHelper.querySpendingByCategory(
+        widget.vehicleId,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      num totalOf(Map<String, dynamic> r) => (r['total'] as num?) ?? 0;
+      byCategory.sort((a, b) => totalOf(b).compareTo(totalOf(a)));
 
-    if (mounted) {
-      setState(() {
-        _totalSpending = total;
-        _spendingByCategory = byCategory;
-        _isLoading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _totalSpending = total;
+          _spendingByCategory = byCategory;
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      // Never leave the spinner running forever.
+      if (mounted) {
+        setState(() {
+          _totalSpending = 0;
+          _spendingByCategory = [];
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not load insights: $e')));
+      }
     }
   }
 
@@ -381,7 +397,7 @@ class _StatsTabState extends State<StatsTab> {
                     ),
                     const SizedBox(height: 10),
                     Text(
-                      '${settings.currencySymbol}${_totalSpending.toStringAsFixed(2)}',
+                      Fmt.money(_totalSpending, settings.currencySymbol),
                       style: TextStyle(
                         fontSize: 36,
                         fontWeight: FontWeight.bold,
@@ -448,7 +464,8 @@ class _StatsTabState extends State<StatsTab> {
                       itemBuilder: (context, index) {
                         final item = _spendingByCategory[index];
                         String category = item[DatabaseHelper.columnCategory];
-                        double total = (item['total'] as num).toDouble();
+                        double total = ((item['total'] as num?) ?? 0)
+                            .toDouble();
 
                         return ListTile(
                           leading: CircleAvatar(
@@ -464,7 +481,7 @@ class _StatsTabState extends State<StatsTab> {
                             style: const TextStyle(fontWeight: FontWeight.w500),
                           ),
                           trailing: Text(
-                            '${settings.currencySymbol}${total.toStringAsFixed(2)}',
+                            Fmt.money(total, settings.currencySymbol),
                             style: TextStyle(
                               fontWeight: FontWeight.bold,
                               fontSize: 16,
@@ -488,7 +505,10 @@ class _StatsTabState extends State<StatsTab> {
           },
           backgroundColor: primaryColor,
           tooltip: 'Export to Excel',
-          child: const Icon(Icons.download_for_offline, color: Colors.white),
+          child: Icon(
+            Icons.download_for_offline,
+            color: settings.onPrimaryColor,
+          ),
         ),
       ),
     );

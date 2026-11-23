@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../service/subscription_provider.dart';
+import 'home_screen.dart';
+import 'onboarding_screen.dart';
 import 'dart:async';
 
 class PaywallScreen extends StatelessWidget {
@@ -25,6 +28,29 @@ class PaywallScreen extends StatelessWidget {
       backgroundColor: Colors.white,
       body: Consumer<SubscriptionProvider>(
         builder: (context, subProvider, child) {
+          // Trial-expired barrier: once premium arrives (purchase, restore or
+          // code), continue into the app. Without this a buyer stays stuck here.
+          if (subProvider.isPremium && isBarrier) {
+            WidgetsBinding.instance.addPostFrameCallback((_) async {
+              // Builds can repeat; only navigate while this route is on top.
+              if (!(ModalRoute.of(context)?.isCurrent ?? false)) return;
+              final prefs = await SharedPreferences.getInstance();
+              final seenOnboarding =
+                  prefs.getBool('hasSeenOnboarding') ?? false;
+              if (!context.mounted ||
+                  !(ModalRoute.of(context)?.isCurrent ?? false)) {
+                return;
+              }
+              Navigator.of(context).pushReplacement(
+                MaterialPageRoute(
+                  builder: (_) => seenOnboarding
+                      ? const HomeScreen()
+                      : const OnboardingScreen(),
+                ),
+              );
+            });
+          }
+
           // Listen for success and close screen
           if (subProvider.isPremium && !isBarrier) {
             WidgetsBinding.instance.addPostFrameCallback((_) {

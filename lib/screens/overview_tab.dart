@@ -9,15 +9,21 @@ import '../service/settings_provider.dart'; // Make sure this path is correct
 import '../widgets/full_screen_photo_viewer.dart'; // Make sure this path is correct
 import 'package:carousel_slider/carousel_slider.dart';
 import '../service/notification_service.dart'; // Make sure this path is correct
+import '../utils/formatters.dart';
 
 class OverviewTab extends StatefulWidget {
   final int vehicleId;
   final int dataVersion;
 
+  /// Opens the Essentials (papers) tab. Paper expiries are listed here with
+  /// the reminders, but they're renewed on that tab.
+  final VoidCallback? onOpenPapers;
+
   const OverviewTab({
     super.key,
     required this.vehicleId,
     required this.dataVersion,
+    this.onOpenPapers,
   });
 
   @override
@@ -144,7 +150,50 @@ class OverviewTabState extends State<OverviewTab> {
 
   void _saveOdometer() async {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
-    int newOdometer = int.tryParse(_odometerController.text) ?? 0;
+    final unitType = Provider.of<SettingsProvider>(
+      context,
+      listen: false,
+    ).unitType;
+
+    // An empty or unparsable field used to save 0, which silently stopped
+    // every odometer reminder.
+    final int? newOdometer = int.tryParse(_odometerController.text.trim());
+    if (newOdometer == null) {
+      scaffoldMessenger.showSnackBar(
+        const SnackBar(content: Text('Enter the odometer reading in numbers.')),
+      );
+      return;
+    }
+    if (newOdometer == _currentOdo) {
+      FocusScope.of(context).unfocus();
+      return;
+    }
+    if (newOdometer < _currentOdo) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Lower reading?'),
+          content: Text(
+            'The new reading ($newOdometer $unitType) is lower than the current one '
+            '($_currentOdo $unitType). Odometer reminders are based on this value. Save it anyway?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) {
+        _odometerController.text = _currentOdo.toString();
+        return;
+      }
+    }
 
     try {
       // 1. Save the new odometer
@@ -165,10 +214,7 @@ class OverviewTabState extends State<OverviewTab> {
       await NotificationService().checkAndShowOdometerReminders(
         vehicleId: widget.vehicleId,
         currentOdometer: newOdometer,
-        unitType: Provider.of<SettingsProvider>(
-          context,
-          listen: false,
-        ).unitType,
+        unitType: unitType,
       );
     } catch (e) {
       if (kDebugMode) {
@@ -314,6 +360,9 @@ class OverviewTabState extends State<OverviewTab> {
                         child: TextField(
                           controller: _odometerController,
                           keyboardType: TextInputType.number,
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
                           style: const TextStyle(
                             fontSize: 24,
                             fontWeight: FontWeight.bold,
@@ -328,7 +377,7 @@ class OverviewTabState extends State<OverviewTab> {
                         onPressed: _saveOdometer,
                         style: ElevatedButton.styleFrom(
                           backgroundColor: settings.primaryColor,
-                          foregroundColor: Colors.white,
+                          foregroundColor: settings.onPrimaryColor,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(20),
                           ),
@@ -576,12 +625,15 @@ class OverviewTabState extends State<OverviewTab> {
     if (isPaper) {
       // It's a Vehicle Paper
       title = reminder[DatabaseHelper.columnPaperType] ?? 'Paper';
-      dueDate = reminder[DatabaseHelper.columnPaperExpiryDate] ?? 'N/A';
+      final String? expiry = reminder[DatabaseHelper.columnPaperExpiryDate];
+      dueDate = expiry == null ? 'N/A' : Fmt.date(expiry);
       dueOdo = 'N/A'; // Papers don't have odometer
       icon = _getIconForPaperType(title);
     } else {
-      dueDate = reminder[DatabaseHelper.columnDueDate] ?? 'N/A';
-      dueOdo = reminder[DatabaseHelper.columnDueOdometer]?.toString() ?? 'N/A';
+      final String? due = reminder[DatabaseHelper.columnDueDate];
+      dueDate = due == null ? 'N/A' : Fmt.date(due);
+      final num? odo = reminder[DatabaseHelper.columnDueOdometer] as num?;
+      dueOdo = odo == null ? 'N/A' : Fmt.number(odo);
       title =
           reminder['template_name'] ??
           reminder[DatabaseHelper.columnNotes] ??
@@ -615,38 +667,47 @@ class OverviewTabState extends State<OverviewTab> {
             '${isPaper ? '' : '\nOdometer: $dueOdo ${settings.unitType}'}',
           ),
           isThreeLine: false,
-          trailing: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.snooze, color: Colors.blue),
-                tooltip: 'Snooze Reminder',
-                onPressed: () {
-                  _showSnoozeDialog(reminder, settings);
-                },
-              ),
-              IconButton(
-                icon: const Icon(
-                  Icons.check_circle_outline,
-                  color: Colors.green,
-                ),
-                tooltip: 'Mark as Complete',
-                onPressed: () async {
-                  int id = reminder[DatabaseHelper.columnId];
-                  await dbHelper.deleteReminder(id);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Reminder marked as complete!'),
-                        backgroundColor: Colors.green,
+          // Papers aren't reminders: Snooze/Complete would change the
+          // reminder that happens to share the paper's id. Renewal is done
+          // on the Essentials tab instead.
+          trailing: isPaper
+              ? IconButton(
+                  icon: Icon(Icons.edit_calendar, color: settings.primaryColor),
+                  tooltip: 'Renew in Essentials',
+                  onPressed: widget.onOpenPapers,
+                )
+              : Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.snooze, color: Colors.blue),
+                      tooltip: 'Snooze Reminder',
+                      onPressed: () {
+                        _showSnoozeDialog(reminder, settings);
+                      },
+                    ),
+                    IconButton(
+                      icon: const Icon(
+                        Icons.check_circle_outline,
+                        color: Colors.green,
                       ),
-                    );
-                  }
-                  loadData();
-                },
-              ),
-            ],
-          ),
+                      tooltip: 'Mark as Complete',
+                      onPressed: () async {
+                        int id = reminder[DatabaseHelper.columnId];
+                        await dbHelper.deleteReminder(id);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Reminder marked as complete!'),
+                              backgroundColor: Colors.green,
+                            ),
+                          );
+                        }
+                        loadData();
+                      },
+                    ),
+                  ],
+                ),
         ),
       ),
     );
@@ -667,25 +728,6 @@ class OverviewTabState extends State<OverviewTab> {
 
   String _formatDate(String? dateStr) {
     if (dateStr == null || dateStr.isEmpty) return 'Never';
-    try {
-      final date = DateTime.parse(dateStr);
-      const months = [
-        'Jan',
-        'Feb',
-        'Mar',
-        'Apr',
-        'May',
-        'Jun',
-        'Jul',
-        'Aug',
-        'Sep',
-        'Oct',
-        'Nov',
-        'Dec',
-      ];
-      return '${months[date.month - 1]} ${date.day}, ${date.year}';
-    } catch (e) {
-      return dateStr;
-    }
+    return Fmt.date(dateStr);
   }
 }

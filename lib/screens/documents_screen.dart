@@ -1,12 +1,11 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:open_file/open_file.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
 import '../service/database_helper.dart';
+import '../service/file_storage.dart';
 import '../service/settings_provider.dart';
 
 class DocumentsScreen extends StatefulWidget {
@@ -87,6 +86,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
       _expandedGroups.add(groupTitles.first);
     }
 
+    if (!mounted) return;
     setState(() {
       _groupedDocuments = grouped;
       _groupTitles = groupTitles;
@@ -95,14 +95,15 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
   }
 
   Future<void> _pickFile(Function setDialogState) async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
+    final PlatformFile? picked = await FilePicker.pickFile(
       type: FileType.custom,
       allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
     );
 
-    if (result != null && result.files.single.path != null) {
+    final String? pickedPath = picked?.path;
+    if (pickedPath != null) {
       setDialogState(() {
-        _tempFilePath = result.files.single.path;
+        _tempFilePath = pickedPath;
       });
     }
   }
@@ -117,13 +118,14 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     _descriptionController.clear();
     _tempFilePath = null;
 
+    // Ignores extra taps on Save while saving (prevented duplicates).
+    bool isSaving = false;
+
     showDialog(
       context: context,
       builder: (ctx) {
-        final primaryColor = Provider.of<SettingsProvider>(
-          context,
-          listen: false,
-        ).primaryColor;
+        final settings = Provider.of<SettingsProvider>(context, listen: false);
+        final primaryColor = settings.primaryColor;
         return StatefulBuilder(
           builder: (context, setDialogState) {
             return AlertDialog(
@@ -273,32 +275,56 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                   child: const Text('Cancel'),
                 ),
                 ElevatedButton(
-                  onPressed: () async {
-                    if (_tempFilePath == null) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Please attach a file.'),
-                          backgroundColor: Colors.red,
-                        ),
-                      );
-                      return;
-                    }
-                    if (_docFormKey.currentState!.validate()) {
-                      await _saveDocument(selectedVehicleId);
-                      if (mounted) Navigator.of(ctx).pop();
-                      _refreshDocumentList();
-                    }
-                  },
+                  onPressed: isSaving
+                      ? null
+                      : () async {
+                          if (_tempFilePath == null) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Please attach a file.'),
+                                backgroundColor: Colors.red,
+                              ),
+                            );
+                            return;
+                          }
+                          if (!_docFormKey.currentState!.validate()) return;
+                          setDialogState(() => isSaving = true);
+                          try {
+                            await _saveDocument(selectedVehicleId);
+                          } catch (e) {
+                            setDialogState(() => isSaving = false);
+                            if (mounted) {
+                              ScaffoldMessenger.of(this.context).showSnackBar(
+                                SnackBar(
+                                  content: Text('Could not save: $e'),
+                                  backgroundColor: Colors.red,
+                                ),
+                              );
+                            }
+                            return;
+                          }
+                          if (ctx.mounted) Navigator.of(ctx).pop();
+                          _refreshDocumentList();
+                        },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: primaryColor,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
                     ),
                   ),
-                  child: const Text(
-                    'Save',
-                    style: TextStyle(color: Colors.white),
-                  ),
+                  child: isSaving
+                      ? SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: settings.onPrimaryColor,
+                          ),
+                        )
+                      : Text(
+                          'Save',
+                          style: TextStyle(color: settings.onPrimaryColor),
+                        ),
                 ),
               ],
             );
@@ -326,16 +352,11 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
     String? finalFilePath = _tempFilePath;
 
     if (_tempFilePath != null) {
-      final appDir = await getApplicationDocumentsDirectory();
-      // Ensure unique filename to prevent overwrites
-      final fileName =
-          '${DateTime.now().millisecondsSinceEpoch}_${p.basename(_tempFilePath!)}';
-      final String newPath = p.join(appDir.path, 'general_documents', fileName);
-      final newFile = File(newPath);
-
-      await newFile.parent.create(recursive: true);
-      await File(_tempFilePath!).copy(newPath);
-      finalFilePath = newPath;
+      // Unique name in app storage (shared helper with papers and photos).
+      finalFilePath = await FileStorage.importFile(
+        _tempFilePath!,
+        FileStorage.documentsFolder,
+      );
     } else {
       return;
     }
@@ -382,15 +403,8 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
               ),
             ),
             onPressed: () async {
-              final doc = await dbHelper.queryGeneralDocumentById(id);
-              if (doc != null && doc[DatabaseHelper.columnFilePath] != null) {
-                final file = File(doc[DatabaseHelper.columnFilePath]);
-                if (await file.exists()) {
-                  await file.delete();
-                }
-              }
-              await dbHelper.deleteGeneralDocument(id);
-              if (mounted) Navigator.of(ctx).pop();
+              await dbHelper.deleteGeneralDocumentWithFile(id);
+              if (ctx.mounted) Navigator.of(ctx).pop();
               _refreshDocumentList();
             },
             child: const Text('Delete'),
